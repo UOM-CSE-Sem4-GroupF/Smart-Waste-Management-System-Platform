@@ -40,10 +40,11 @@ for p in "${WIN_PATHS[@]}"; do
   [ -d "$p" ] && export PATH="$PATH:$p"
 done
 
-# Create wrapper functions so the rest of the script calls just `minikube`
-# etc. regardless of whether the .exe suffix is needed. Aliases don't work in non-interactive bash.
+# Create wrapper functions so the rest of the script calls the Windows .exe versions
+# if they exist. This prevents the Linux version of kubectl from running and
+# failing to find Minikube's Windows-generated ~/.kube/config!
 for tool in minikube kubectl helm docker; do
-  if ! command -v "$tool" &>/dev/null && command -v "${tool}.exe" &>/dev/null; then
+  if command -v "${tool}.exe" &>/dev/null; then
     eval "function $tool() { ${tool}.exe \"\$@\"; }"
   fi
 done
@@ -70,6 +71,11 @@ KAFKA_CHART_VERSION="28.0.0"  # Bitnami Kafka chart version (KRaft capable)
 # Script directory (so relative paths work regardless of where it's called from)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Change into the repo root so we can use relative paths.
+# This prevents issues where Windows executables (kubectl.exe) fail 
+# to understand Linux-style absolute paths (like /mnt/e/...).
+cd "$REPO_ROOT"
 
 echo ""
 echo "================================================================"
@@ -109,10 +115,10 @@ fi
 log_info "Enabling ingress addon..."
 minikube addons enable ingress >/dev/null 2>&1 || log_warn "Ingress addon already enabled."
 
-# --- Step 3: Create all Kubernetes namespaces ---
+# --- Step 3: Creating namespaces ---
 log_step "Step 3: Creating namespaces"
 
-kubectl apply -f "$REPO_ROOT/namespaces/namespaces-dev.yaml"
+kubectl apply -f ./namespaces/namespaces-dev.yaml
 log_success "All namespaces created."
 
 # --- Step 4: Add Helm repositories ---
@@ -132,7 +138,7 @@ else
   helm install kafka bitnami/kafka \
     --namespace messaging \
     --version "$KAFKA_CHART_VERSION" \
-    --values "$REPO_ROOT/messaging/kafka/values-dev.yaml" \
+    --values ./messaging/kafka/values-dev.yaml \
     --wait \
     --timeout 5m
   log_success "Kafka deployed."
@@ -148,7 +154,7 @@ kubectl wait --for=condition=ready pod \
   --timeout=120s
 
 log_info "Running Kafka topic initializer Job..."
-kubectl apply -f "$REPO_ROOT/messaging/kafka/topics.yaml"
+kubectl apply -f ./messaging/kafka/topics.yaml
 
 log_info "Waiting for topic creation job to complete..."
 kubectl wait --for=condition=complete job/kafka-topic-init \
