@@ -1,0 +1,86 @@
+# Group F — Smart Waste Management System
+# Kubernetes Namespace Definitions
+# Owner: F4 Platform Team
+# All namespaces for local dev and production environments are defined here.
+# Apply with: kubectl apply -f namespaces/namespaces-dev.yaml
+
+---
+# API Gateway (Kong)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    environment: dev
+---
+# Authentication & Secrets (Keycloak, Vault, OPA)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: auth
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    environment: dev
+---
+# Messaging Infrastructure (Kafka, Zookeeper, EMQX)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: messaging
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    environment: dev
+---
+# Observability (Prometheus, Grafana, ELK, Jaeger)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    environment: dev
+---
+# CI/CD & Testing Tools (Argo CD, Chaos Mesh, k6)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cicd
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    environment: dev
+---
+# Blockchain (Hyperledger Fabric peer, orderer, CA)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: blockchain
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    environment: dev
+---
+# Application Services — Development (all F2 + F3 services)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: waste-dev
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    environment: dev
+---
+# Application Services — Production (all F2 + F3 services)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: waste-prod
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    environment: prod

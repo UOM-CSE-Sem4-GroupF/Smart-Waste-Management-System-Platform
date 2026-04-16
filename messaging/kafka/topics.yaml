@@ -1,0 +1,128 @@
+# Group F — Smart Waste Management System
+# Kafka Topic Initialization Job
+# Owner: F4 Platform Team
+#
+# This Kubernetes Job runs once after Kafka is deployed.
+# It creates ALL required Kafka topics with the correct retention settings
+# as defined in service-specifications.md.
+#
+# Usage: kubectl apply -f messaging/kafka/topics.yaml -n messaging
+# (Run after Kafka is ready: kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=kafka -n messaging)
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-topic-init
+  namespace: messaging
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+spec:
+  # Job will be cleaned up 60 seconds after completion
+  ttlSecondsAfterFinished: 60
+  template:
+    metadata:
+      name: kafka-topic-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: kafka-topic-init
+          # Use the same Kafka image so kafka-topics.sh is available
+          image: bitnami/kafka:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              KAFKA_BROKER="kafka.messaging.svc.cluster.local:9092"
+
+              echo "=== Group F SWMS — Kafka Topic Initializer ==="
+              echo "Broker: $KAFKA_BROKER"
+              echo ""
+
+              # Helper function to create a topic
+              create_topic() {
+                local TOPIC_NAME=$1
+                local PARTITIONS=$2
+                local REPLICATION=$3
+                local RETENTION_MS=$4
+
+                echo "Creating topic: $TOPIC_NAME"
+                kafka-topics.sh \
+                  --bootstrap-server $KAFKA_BROKER \
+                  --create \
+                  --if-not-exists \
+                  --topic "$TOPIC_NAME" \
+                  --partitions "$PARTITIONS" \
+                  --replication-factor "$REPLICATION" \
+                  --config "retention.ms=$RETENTION_MS"
+              }
+
+              # ===========================================================
+              # TOPIC REGISTRY
+              # Source: service-specifications.md — Kafka Topics section
+              # Format: create_topic <name> <partitions> <replication> <retention_ms>
+              # Retention conversions:
+              #   1 day    =    86400000 ms
+              #   3 days   =   259200000 ms
+              #   7 days   =   604800000 ms
+              #   30 days  =  2592000000 ms
+              #   365 days = 31536000000 ms
+              #   forever  = -1
+              # ===========================================================
+
+              # Raw sensor readings from ESP32 via EMQX → F2 Flink consumers
+              # Retention: 7 days
+              create_topic "waste.bin.telemetry" 6 1 604800000
+
+              # Flink-enriched readings with urgency score → F3 orchestrator, F3 notification
+              # Retention: 3 days (high volume, processed quickly)
+              create_topic "waste.bin.processed" 6 1 259200000
+
+              # Business state changes from bin-status-service → F3 notification, F4 audit
+              # Retention: 3 days
+              create_topic "waste.bin.status.changed" 3 1 259200000
+
+              # New collection jobs (triggers OR-Tools) → F2 OR-Tools, F3 scheduler
+              # Retention: 7 days
+              create_topic "waste.collection.jobs" 3 1 604800000
+
+              # OR-Tools output: ordered stops per vehicle → F3 orchestrator, F3 notification
+              # Retention: 1 day (ephemeral — consumed quickly)
+              create_topic "waste.routes.optimized" 3 1 86400000
+
+              # Airflow triggers routine job creation → F3 orchestrator
+              # Retention: 1 day
+              create_topic "waste.routine.schedule.trigger" 3 1 86400000
+
+              # Orchestrator publishes on job completion → F2 Spark, F4 Hyperledger
+              # Retention: 30 days (needed for ML retraining labels)
+              create_topic "waste.job.completed" 3 1 2592000000
+
+              # Driver accept/reject from Flutter via Kong → F3 orchestrator
+              # Retention: 1 day
+              create_topic "waste.driver.responses" 3 1 86400000
+
+              # GPS positions from Flutter app via EMQX → F3 notification, F2 Flink, F3 scheduler
+              # Retention: 7 days (high volume GPS pings)
+              create_topic "waste.vehicle.location" 6 1 604800000
+
+              # Flink detects lorry off planned route → F3 notification
+              # Retention: 1 day
+              create_topic "waste.vehicle.deviation" 3 1 86400000
+
+              # Zone-level aggregations from Flink windowing → F3 dashboard, Grafana
+              # Retention: 7 days
+              create_topic "waste.zone.statistics" 3 1 604800000
+
+              # All events to record on Hyperledger → F4 Hyperledger
+              # Retention: 365 days (compliance requirement)
+              create_topic "waste.audit.events" 3 1 31536000000
+
+              # Airflow publishes when new ML model promoted → F3 orchestrator
+              # Retention: 1 day
+              create_topic "waste.model.retrained" 3 1 86400000
+
+              echo ""
+              echo "=== All 13 topics created successfully ==="
+              kafka-topics.sh --bootstrap-server $KAFKA_BROKER --list
