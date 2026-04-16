@@ -18,6 +18,36 @@
 set -e  # Exit on any error
 set -u  # Treat unset variables as errors
 
+# --- Windows / Git Bash PATH fix ---
+# When running bash via Git Bash on Windows, winget-installed tools land in
+# Windows Program Files paths that Git Bash doesn't load automatically.
+# We append those paths here so the script finds minikube.exe, kubectl.exe,
+# and helm.exe. This block is harmless on Linux/Mac (dirs won't exist).
+WIN_PATHS=(
+  "/mnt/c/Program Files/Kubernetes/Minikube"
+  "/mnt/c/Program Files/kubectl"
+  "/mnt/c/ProgramData/chocolatey/bin"
+  "/mnt/c/Program Files/Helm"
+)
+
+# Expand wildcard for Winget path separately since quotes break wildcard expansion
+for path in /mnt/c/Users/*/AppData/Local/Microsoft/WinGet/Links; do
+  if [ -d "$path" ]; then
+    WIN_PATHS+=("$path")
+  fi
+done
+for p in "${WIN_PATHS[@]}"; do
+  [ -d "$p" ] && export PATH="$PATH:$p"
+done
+
+# Create wrapper functions so the rest of the script calls just `minikube`
+# etc. regardless of whether the .exe suffix is needed. Aliases don't work in non-interactive bash.
+for tool in minikube kubectl helm docker; do
+  if ! command -v "$tool" &>/dev/null && command -v "${tool}.exe" &>/dev/null; then
+    eval "function $tool() { ${tool}.exe \"\$@\"; }"
+  fi
+done
+
 # --- Colour output helpers ---
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -51,10 +81,13 @@ echo ""
 log_step "Step 1: Checking prerequisites"
 
 for tool in docker minikube kubectl helm; do
-  if ! command -v "$tool" &>/dev/null; then
-    log_error "'$tool' is not installed or not in PATH. Please install it first."
+  if command -v "$tool" &>/dev/null; then
+    log_success "$tool found: $(command -v $tool)"
+  elif command -v "${tool}.exe" &>/dev/null; then
+    log_success "${tool}.exe found: $(command -v "${tool}.exe")"
+  else
+    log_error "'$tool' (or ${tool}.exe) is not installed or not in PATH. Please install it first and RESTART your terminal."
   fi
-  log_success "$tool found: $(command -v $tool)"
 done
 
 # --- Step 2: Start Minikube ---
