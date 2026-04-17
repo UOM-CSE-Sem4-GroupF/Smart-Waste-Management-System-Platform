@@ -3,27 +3,17 @@
 # Deployed into: gateway namespace
 # Mode: DB-less (declarative config via ConfigMap)
 
-# DB-less mode — all config comes from the mounted ConfigMap
+# DB-less mode natively supported by the chart
 env:
   database: "off"
-  # Tell Kong exactly where the declarative config file lives
-  declarative_config: /kong_dbless/kong.yaml
 
-# Mount the kong-declarative-config ConfigMap into /kong_dbless
+# Tell the chart to automatically mount and configure the ConfigMap
+dblessConfig:
+  configMap: kong-declarative-config
+
 deployment:
   kong:
     enabled: true
-
-# Use the extraVolumes/Mounts approach supported by the kong chart
-extraVolumes:
-  - name: kong-declarative-config
-    configMap:
-      name: kong-declarative-config
-
-extraVolumeMounts:
-  - name: kong-declarative-config
-    mountPath: /kong_dbless
-    readOnly: true
 
 # Enable the Ingress Controller to watch K8s Ingress resources
 ingressController:

@@ -3,6 +3,8 @@
 # Deployed into: auth namespace
 # Realm: waste-management (imported from realm-export.json at startup)
 
+# ─── Image Registry ──────────────────────────────────────────
+# Use ECR for Keycloak (same fix as Kafka — Docker Hub pulls fail)
 global:
   security:
     allowInsecureImages: true
@@ -11,13 +13,13 @@ image:
   registry: public.ecr.aws
   repository: bitnami/keycloak
 
-# Admin credentials — stored here for local dev only
-# In production, these come from HashiCorp Vault
+# ─── Admin Credentials ───────────────────────────────────────
 auth:
   adminUser: admin
   adminPassword: "swms-admin-dev-2026"
 
-# Import the waste-management realm automatically on startup
+# ─── Realm Import ────────────────────────────────────────────
+# Import the waste-management realm automatically on first startup
 extraStartupArgs: "--import-realm"
 
 extraVolumes:
@@ -29,29 +31,46 @@ extraVolumeMounts:
   - name: realm-config
     mountPath: /opt/bitnami/keycloak/data/import
 
-# Single replica — local dev only
+# ─── Replica Count ───────────────────────────────────────────
 replicaCount: 1
 
-# Use PostgreSQL as the backing store
-# For local dev we use an embedded H2 DB (no external Postgres needed)
+# ─── PostgreSQL (Bundled Sub-Chart) ──────────────────────────
+# Let the Bitnami chart deploy its own Postgres. This is the simplest
+# approach — the chart wires up KC_DB_URL, KC_DB_USERNAME, etc. automatically.
 postgresql:
-  enabled: false
+  enabled: true
+  image:
+    registry: public.ecr.aws
+    repository: bitnami/postgresql
+  auth:
+    postgresPassword: "swms-pg-dev-2026"
+    password: "swms-kc-dev-2026"
+  primary:
+    persistence:
+      size: 1Gi
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
 
-externalDatabase:
-  host: ""
+# ─── Dev Mode ────────────────────────────────────────────────
+# Run in development mode (start-dev) — no strict hostname or HTTPS checks
+production: false
 
-# Use embedded H2 for local dev (Keycloak supports it natively)
-extraEnvVars:
-  - name: KC_DB
-    value: dev-file
-
+# ─── Networking ──────────────────────────────────────────────
 # Expose via NodePort so Minikube can reach it
 service:
   type: NodePort
-  http:
-    nodePort: 30180
+  ports:
+    http: 80
+  nodePorts:
+    http: "30180"
 
-# Resource limits for Minikube (Keycloak is JVM-based — needs a bit more RAM)
+# ─── Resource Limits ─────────────────────────────────────────
+# Keycloak is JVM-based — needs a bit more RAM
 resources:
   requests:
     cpu: 200m

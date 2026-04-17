@@ -65,7 +65,12 @@
         "access.token.lifespan": "300",
         "use.refresh.tokens": "true"
       },
-      "defaultClientScopes": ["openid", "profile", "email", "roles"],
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email",
+        "roles"
+      ],
       "optionalClientScopes": []
     },
     {
@@ -81,13 +86,20 @@
         "io.groupf.swms://callback",
         "http://localhost/*"
       ],
-      "webOrigins": ["*"],
+      "webOrigins": [
+        "*"
+      ],
       "protocol": "openid-connect",
       "attributes": {
         "pkce.code.challenge.method": "S256",
         "access.token.lifespan": "300"
       },
-      "defaultClientScopes": ["openid", "profile", "email", "roles"],
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email",
+        "roles"
+      ],
       "optionalClientScopes": []
     },
     {
@@ -104,50 +116,6 @@
       "protocol": "openid-connect"
     }
   ],
-  "userProfileConfig": {
-    "attributes": [
-      {
-        "name": "username",
-        "displayName": "Username",
-        "required": { "roles": ["user"] }
-      },
-      {
-        "name": "email",
-        "displayName": "Email",
-        "required": { "roles": ["user"] }
-      },
-      {
-        "name": "zone_id",
-        "displayName": "Assigned Zone ID",
-        "required": {},
-        "permissions": { "view": ["admin", "supervisor"], "edit": ["admin"] }
-      },
-      {
-        "name": "vehicle_id",
-        "displayName": "Assigned Vehicle ID",
-        "required": {},
-        "permissions": { "view": ["admin", "supervisor"], "edit": ["admin"] }
-      },
-      {
-        "name": "fcm_token",
-        "displayName": "FCM Push Token",
-        "required": {},
-        "permissions": { "view": ["admin"], "edit": ["admin", "driver"] }
-      },
-      {
-        "name": "shift_start",
-        "displayName": "Shift Start Time",
-        "required": {},
-        "permissions": { "view": ["admin", "supervisor"], "edit": ["admin"] }
-      },
-      {
-        "name": "shift_end",
-        "displayName": "Shift End Time",
-        "required": {},
-        "permissions": { "view": ["admin", "supervisor"], "edit": ["admin"] }
-      }
-    ]
-  },
   "identityProviders": [],
   "users": [
     {
@@ -157,7 +125,9 @@
       "emailVerified": true,
       "firstName": "Test",
       "lastName": "Supervisor",
-      "realmRoles": ["supervisor"],
+      "realmRoles": [
+        "supervisor"
+      ],
       "credentials": [
         {
           "type": "password",
@@ -173,12 +143,22 @@
       "emailVerified": true,
       "firstName": "Test",
       "lastName": "Driver",
-      "realmRoles": ["driver"],
+      "realmRoles": [
+        "driver"
+      ],
       "attributes": {
-        "zone_id": ["Zone-1"],
-        "vehicle_id": ["LORRY-01"],
-        "shift_start": ["08:00"],
-        "shift_end": ["17:00"]
+        "zone_id": [
+          "Zone-1"
+        ],
+        "vehicle_id": [
+          "LORRY-01"
+        ],
+        "shift_start": [
+          "08:00"
+        ],
+        "shift_end": [
+          "17:00"
+        ]
       },
       "credentials": [
         {
