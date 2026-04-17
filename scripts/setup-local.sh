@@ -66,7 +66,7 @@ log_step()    { echo -e "\n${YELLOW}======================================${NC}"
 MINIKUBE_CPUS=4
 MINIKUBE_MEMORY=6144   # 6 GB — Kafka + Keycloak + Kong need some headroom
 MINIKUBE_DISK=20g
-KAFKA_CHART_VERSION="28.0.0"  # Bitnami Kafka chart version (KRaft capable)
+KAFKA_CHART_VERSION="32.4.3"  # Bitnami Kafka chart version (KRaft default)
 
 # Script directory (so relative paths work regardless of where it's called from)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -121,12 +121,10 @@ log_step "Step 3: Creating namespaces"
 kubectl apply -f ./namespaces/namespaces-dev.yaml
 log_success "All namespaces created."
 
-# --- Step 4: Add Helm repositories ---
-log_step "Step 4: Adding Helm repositories"
-
-helm repo add bitnami https://charts.bitnami.com/bitnami 2>/dev/null || true
-helm repo update
-log_success "Helm repos up to date."
+# --- Step 4: (No longer needed — using OCI registry directly) ---
+log_step "Step 4: Checking Helm OCI support"
+helm version --short
+log_success "Helm OCI support ready."
 
 # --- Step 5: Deploy Kafka ---
 log_step "Step 5: Deploying Kafka (messaging namespace)"
@@ -134,13 +132,12 @@ log_step "Step 5: Deploying Kafka (messaging namespace)"
 if helm status kafka -n messaging &>/dev/null; then
   log_warn "Kafka already deployed — skipping install."
 else
-  log_info "Installing Kafka chart (bitnami/kafka v${KAFKA_CHART_VERSION})..."
-  helm install kafka bitnami/kafka \
+  log_info "Installing Kafka (OCI chart from Bitnami registry)..."
+  helm install kafka oci://registry-1.docker.io/bitnamicharts/kafka \
     --namespace messaging \
-    --version "$KAFKA_CHART_VERSION" \
     --values ./messaging/kafka/values-dev.yaml \
     --wait \
-    --timeout 5m
+    --timeout 10m
   log_success "Kafka deployed."
 fi
 

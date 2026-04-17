@@ -4,8 +4,16 @@
 # Chart: bitnami/kafka
 # Usage: helm install kafka bitnami/kafka -n messaging -f messaging/kafka/values-dev.yaml
 
+global:
+  security:
+    allowInsecureImages: true
+
 # Single broker for local dev (spec says 3 brokers for prod)
 replicaCount: 1
+
+image:
+  registry: public.ecr.aws
+  repository: bitnami/kafka
 
 kraft:
   enabled: true
@@ -36,11 +44,11 @@ persistence:
 
 # Log retention per topic will be configured via topics.yaml
 # Global defaults
-config:
-  autoCreateTopicsEnable: "false"   # We create topics explicitly via topics.yaml
-  defaultReplicationFactor: "1"     # Single broker in dev
-  numPartitions: "3"                # 3 partitions per topic by default
-  logRetentionHours: "168"          # 7 days default; overridden per topic
+extraConfig: |-
+  auto.create.topics.enable=false
+  default.replication.factor=1
+  num.partitions=3
+  log.retention.hours=168
 
 # Disable Zookeeper — using KRaft mode (built-in quorum)
 zookeeper:
