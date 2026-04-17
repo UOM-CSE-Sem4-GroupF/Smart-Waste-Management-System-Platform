@@ -160,33 +160,78 @@ kubectl wait --for=condition=complete job/kafka-topic-init \
 
 log_success "All 13 Kafka topics created."
 
-# --- Step 7: Final status check ---
-log_step "Step 7: Cluster status"
+# --- Step 7: Deploy Kong API Gateway ---
+log_step "Step 7: Deploying Kong (gateway namespace)"
+
+# Apply the declarative config ConfigMap FIRST (Kong reads it on startup)
+log_info "Applying Kong declarative config..."
+kubectl apply -f ./gateway/kong/kong-config.yaml
+
+if helm status kong -n gateway &>/dev/null; then
+  log_warn "Kong already deployed — skipping install."
+else
+  log_info "Adding Kong Helm repo..."
+  helm repo add kong https://charts.konghq.com 2>/dev/null || true
+  helm repo update
+
+  log_info "Installing Kong (DB-less mode)..."
+  helm install kong kong/kong \
+    --namespace gateway \
+    --values ./gateway/kong/values-dev.yaml \
+    --wait \
+    --timeout 5m
+  log_success "Kong deployed."
+fi
+
+# --- Step 8: Deploy Keycloak ---
+log_step "Step 8: Deploying Keycloak (auth namespace)"
+
+# Create the realm ConfigMap from realm-export.json
+log_info "Creating Keycloak realm ConfigMap..."
+kubectl create configmap keycloak-realm-config \
+  --from-file=waste-management-realm.json=./auth/keycloak/realm-export.json \
+  -n auth \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+if helm status keycloak -n auth &>/dev/null; then
+  log_warn "Keycloak already deployed — skipping install."
+else
+  log_info "Installing Keycloak (OCI chart from Bitnami registry)..."
+  helm install keycloak oci://registry-1.docker.io/bitnamicharts/keycloak \
+    --namespace auth \
+    --values ./auth/keycloak/values-dev.yaml \
+    --wait \
+    --timeout 10m
+  log_success "Keycloak deployed."
+fi
+
+# --- Final: Cluster status ---
+log_step "Final: Cluster status"
 
 echo ""
 log_info "Pods across all namespaces:"
 kubectl get pods -A
 
 echo ""
-log_info "Kafka topics:"
-kubectl run kafka-list-topics \
-  --image=bitnami/kafka:latest \
-  --rm -it \
-  --restart=Never \
-  -n messaging \
-  -- kafka-topics.sh \
-     --bootstrap-server kafka.messaging.svc.cluster.local:9092 \
-     --list 2>/dev/null || log_warn "Could not list topics (pod may have been cleaned up)."
-
-echo ""
 echo "================================================================"
 echo "  Setup complete!"
 echo ""
-echo "  Useful URLs (run 'minikube service <name> -n <ns> --url'):"
-echo "  Kafka (internal): kafka.messaging.svc.cluster.local:9092"
+echo "  Access URLs (via: minikube service <name> -n <ns> --url):"
+echo "  Kafka:      kafka.messaging.svc.cluster.local:9092  (internal)"
+echo "  Kong Proxy: http://localhost:30080  (NodePort)"
+echo "  Keycloak:   http://localhost:30180  (NodePort)"
+echo ""
+echo "  Keycloak Admin:"
+echo "    URL:      http://localhost:30180/admin"
+echo "    User:     admin"
+echo "    Password: swms-admin-dev-2026"
+echo ""
+echo "  Test Users:"
+echo "    supervisor@swms-dev.local  /  swms-supervisor-dev"
+echo "    driver@swms-dev.local      /  swms-driver-dev"
 echo ""
 echo "  Next steps:"
-echo "  1. Deploy Kong:      (coming soon — gateway/)"
-echo "  2. Deploy Keycloak:  (coming soon — auth/keycloak/)"
-echo "  3. Deploy Vault:     (coming soon — auth/vault/)"
+echo "  1. Deploy Vault: (coming soon — auth/vault/)"
+echo "  2. Deploy EMQX:  (coming soon — messaging/emqx/)"
 echo "================================================================"
+

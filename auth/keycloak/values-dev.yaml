@@ -1,0 +1,61 @@
+# Keycloak — Helm Values (Local Dev)
+# Chart: bitnami/keycloak (via OCI registry)
+# Deployed into: auth namespace
+# Realm: waste-management (imported from realm-export.json at startup)
+
+global:
+  security:
+    allowInsecureImages: true
+
+image:
+  registry: public.ecr.aws
+  repository: bitnami/keycloak
+
+# Admin credentials — stored here for local dev only
+# In production, these come from HashiCorp Vault
+auth:
+  adminUser: admin
+  adminPassword: "swms-admin-dev-2026"
+
+# Import the waste-management realm automatically on startup
+extraStartupArgs: "--import-realm"
+
+extraVolumes:
+  - name: realm-config
+    configMap:
+      name: keycloak-realm-config
+
+extraVolumeMounts:
+  - name: realm-config
+    mountPath: /opt/bitnami/keycloak/data/import
+
+# Single replica — local dev only
+replicaCount: 1
+
+# Use PostgreSQL as the backing store
+# For local dev we use an embedded H2 DB (no external Postgres needed)
+postgresql:
+  enabled: false
+
+externalDatabase:
+  host: ""
+
+# Use embedded H2 for local dev (Keycloak supports it natively)
+extraEnvVars:
+  - name: KC_DB
+    value: dev-file
+
+# Expose via NodePort so Minikube can reach it
+service:
+  type: NodePort
+  http:
+    nodePort: 30180
+
+# Resource limits for Minikube (Keycloak is JVM-based — needs a bit more RAM)
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi

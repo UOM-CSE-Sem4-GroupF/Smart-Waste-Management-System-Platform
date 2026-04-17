@@ -1,0 +1,217 @@
+# Group F SWMS — Kong Declarative Configuration
+# This file is loaded as a Kubernetes ConfigMap and mounted into Kong at startup.
+# Kong runs in DB-less mode: all config lives here, not in a database.
+#
+# Applied via: kubectl apply -f gateway/kong/kong-config.yaml -n gateway
+#
+# ROUTE DESIGN:
+#   All /api/v1/* routes are public-facing (through Kong, require JWT)
+#   All /internal/* routes are BLOCKED at Kong — services call each other directly via K8s DNS
+#   /ws routes WebSocket connections to notification-service
+#
+# Owner: F4 Platform Team
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kong-declarative-config
+  namespace: gateway
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+data:
+  kong.yaml: |
+    _format_version: "3.0"
+    _transform: true
+
+    # =========================================================
+    # UPSTREAM SERVICES
+    # These are the DNS names of services inside the cluster.
+    # Format: <service-name>.<namespace>.svc.cluster.local
+    # Services must be deployed before Kong can route to them.
+    # =========================================================
+
+    services:
+      # ---------------------------------------------------------
+      # F3 — Bin Status Service
+      # Serves all bin state and zone summary queries
+      # ---------------------------------------------------------
+      - name: bin-status-service
+        url: http://bin-status-service.waste-dev.svc.cluster.local:3001
+        connect_timeout: 3000
+        read_timeout: 10000
+        write_timeout: 10000
+        routes:
+          - name: bins-api
+            paths:
+              - /api/v1/bins
+            strip_path: false
+            methods:
+              - GET
+              - POST
+              - PUT
+              - PATCH
+            plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+              - name: rate-limiting
+                config:
+                  minute: 100
+                  policy: local
+
+          - name: zones-api
+            paths:
+              - /api/v1/zones
+            strip_path: false
+            methods:
+              - GET
+            plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+              - name: rate-limiting
+                config:
+                  minute: 60
+                  policy: local
+
+      # ---------------------------------------------------------
+      # F3 — Collection Workflow Orchestrator
+      # Manages the full job lifecycle state machine
+      # ---------------------------------------------------------
+      - name: workflow-orchestrator
+        url: http://workflow-orchestrator.waste-dev.svc.cluster.local:3002
+        connect_timeout: 3000
+        read_timeout: 30000
+        write_timeout: 30000
+        routes:
+          - name: collection-jobs-api
+            paths:
+              - /api/v1/collection-jobs
+            strip_path: false
+            methods:
+              - GET
+              - POST
+              - PUT
+              - PATCH
+            plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+              - name: rate-limiting
+                config:
+                  minute: 60
+                  policy: local
+
+      # ---------------------------------------------------------
+      # F3 — Scheduler Service
+      # Handles driver/vehicle assignment and job progress tracking
+      # ---------------------------------------------------------
+      - name: scheduler-service
+        url: http://scheduler-service.waste-dev.svc.cluster.local:3003
+        connect_timeout: 3000
+        read_timeout: 15000
+        write_timeout: 15000
+        routes:
+          - name: collections-api
+            paths:
+              - /api/v1/collections
+            strip_path: false
+            methods:
+              - GET
+              - POST
+            plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+              - name: rate-limiting
+                config:
+                  minute: 60
+                  policy: local
+
+          - name: vehicles-api
+            paths:
+              - /api/v1/vehicles
+            strip_path: false
+            methods:
+              - GET
+            plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+              - name: rate-limiting
+                config:
+                  minute: 60
+                  policy: local
+
+      # ---------------------------------------------------------
+      # F2 — FastAPI ML Service
+      # Fill-time predictions, zone generation, route scoring
+      # ---------------------------------------------------------
+      - name: fastapi-ml-service
+        url: http://fastapi-ml-service.waste-dev.svc.cluster.local:8000
+        connect_timeout: 3000
+        read_timeout: 30000
+        write_timeout: 10000
+        routes:
+          - name: ml-api
+            paths:
+              - /api/v1/ml
+            strip_path: false
+            methods:
+              - GET
+              - POST
+            plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+              - name: rate-limiting
+                config:
+                  minute: 30
+                  policy: local
+
+      # ---------------------------------------------------------
+      # F3 — Notification Service (WebSocket)
+      # Serves Socket.IO for live dashboard updates
+      # ---------------------------------------------------------
+      - name: notification-service
+        url: http://notification-service.waste-dev.svc.cluster.local:3004
+        connect_timeout: 3000
+        read_timeout: 60000
+        write_timeout: 60000
+        routes:
+          - name: websocket-api
+            paths:
+              - /ws
+            strip_path: false
+            # WebSocket upgrade — no JWT enforcement at gateway level
+            # Auth is handled inside the Socket.IO handshake
+            plugins:
+              - name: rate-limiting
+                config:
+                  minute: 10
+                  policy: local
+
+    # =========================================================
+    # GLOBAL PLUGINS
+    # Applied to every request passing through Kong
+    # =========================================================
+    plugins:
+      # Structured request logging — visible in Kong logs
+      - name: file-log
+        config:
+          path: /dev/stdout
+          reopen: false
+
+      # Correlation IDs for distributed tracing (Jaeger-compatible)
+      - name: correlation-id
+        config:
+          header_name: X-Request-ID
+          generator: uuid
+          echo_downstream: true
