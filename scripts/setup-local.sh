@@ -238,6 +238,39 @@ kubectl wait --for=condition=complete job/vault-bootstrap -n auth --timeout=120s
   && log_success "Vault bootstrap complete. All secrets seeded." \
   || log_warn "Bootstrap job still running. Check: kubectl logs -n auth -l job-name=vault-bootstrap"
 
+# --- Step 10: Deploy EMQX MQTT Broker ---
+log_step "Step 10: Deploying EMQX MQTT Broker (messaging namespace)"
+
+# Add the EMQX Helm repo (idempotent)
+if ! helm repo list 2>/dev/null | grep -q "emqx"; then
+  log_info "Adding EMQX Helm repo..."
+  helm repo add emqx https://repos.emqx.io/charts
+  helm repo update
+else
+  log_info "EMQX Helm repo already added."
+fi
+
+if helm status emqx -n messaging &>/dev/null; then
+  log_warn "EMQX already deployed — skipping install."
+else
+  log_info "Installing EMQX 5 single-node..."
+  helm install emqx emqx/emqx \
+    --namespace messaging \
+    --values ./messaging/emqx/values-dev.yaml \
+    --wait \
+    --timeout 5m
+  log_success "EMQX deployed."
+fi
+
+# Run bootstrap Job to create MQTT users + Kafka bridge rules
+log_info "Applying EMQX bootstrap Job (MQTT users + Kafka bridge)..."
+kubectl apply -f ./messaging/emqx/emqx-bootstrap.yaml -n messaging
+
+log_info "Waiting for emqx-bootstrap Job to complete..."
+kubectl wait --for=condition=complete job/emqx-bootstrap -n messaging --timeout=180s \
+  && log_success "EMQX bootstrap complete. MQTT ↔ Kafka bridge is live." \
+  || log_warn "Bootstrap job still running. Check: kubectl logs -n messaging -l job-name=emqx-bootstrap"
+
 # --- Final: Cluster status ---
 log_step "Final: Cluster status"
 
@@ -250,27 +283,37 @@ echo "================================================================"
 echo "  Setup complete!"
 echo ""
 echo "  Access URLs (NodePort — works directly after minikube start):"
-echo "  Kafka:      kafka.messaging.svc.cluster.local:9092  (internal)"
-echo "  Kong Proxy: http://localhost:30080  (NodePort)"
-echo "  Keycloak:   http://localhost:30180  (NodePort)"
-echo "  Vault UI:   http://localhost:30820  (NodePort)"
+echo "  Kafka:        kafka.messaging.svc.cluster.local:9092  (internal)"
+echo "  Kong Proxy:   http://localhost:30080  (NodePort)"
+echo "  Keycloak:     http://localhost:30180  (NodePort)"
+echo "  Vault UI:     http://localhost:30820  (NodePort)"
+echo "  EMQX MQTT:    <minikube-ip>:31883  (NodePort — for ESP32/Node-RED)"
+echo "  EMQX Dashboard: http://localhost:31083  (NodePort)"
 echo ""
 echo "  Keycloak Admin:"
 echo "    URL:      http://localhost:30180/admin"
-echo "    User:     admin"
-echo "    Password: swms-admin-dev-2026"
+echo "    User:     admin / swms-admin-dev-2026"
 echo ""
 echo "  Vault:"
 echo "    UI:       http://localhost:30820"
 echo "    Token:    swms-vault-dev-root-token"
-echo "    Secrets:  secret/swms/kafka | secret/swms/keycloak | secret/swms/postgres"
 echo ""
-echo "  Test Users:"
-echo "    supervisor@swms-dev.local  /  swms-supervisor-dev"
-echo "    driver@swms-dev.local      /  swms-driver-dev"
+echo "  EMQX MQTT Credentials (for F1 team):"
+echo "    sensor-device / swms-sensor-dev-2026  (ESP32 devices)"
+echo "    edge-gateway  / swms-edge-dev-2026    (Node-RED RPi gateway)"
+echo "    f1-admin      / swms-f1-admin-2026    (testing)"
+echo "    Dashboard:    admin / swms-emqx-dev-2026"
+echo ""
+echo "  Kafka Bridge Rules:"
+echo "    sensors/#  → waste.bin.telemetry"
+echo "    vehicles/# → waste.vehicle.location"
+echo ""
+echo "  Test Users (Keycloak):"
+echo "    supervisor@swms-dev.local / swms-supervisor-dev"
+echo "    driver@swms-dev.local     / swms-driver-dev"
 echo ""
 echo "  Next steps:"
-echo "  1. Deploy EMQX: (coming soon — messaging/emqx/)"
-echo "  2. Wire Vault Agent Injector into F1/F2/F3 services"
+echo "  1. Deploy Prometheus + Grafana (monitoring/)"
+echo "  2. Deploy Argo CD (cicd/)"
 echo "================================================================"
 

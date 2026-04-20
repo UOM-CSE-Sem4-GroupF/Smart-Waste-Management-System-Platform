@@ -1,0 +1,64 @@
+# Group F — Smart Waste Management System
+# EMQX MQTT Broker — Helm Values (Local Dev)
+# Chart: emqx/emqx (official EMQX v5 Helm chart)
+# Deployed into: messaging namespace
+#
+# Usage: helm upgrade --install emqx emqx/emqx -n messaging -f messaging/emqx/values-dev.yaml
+#
+# Provides:
+#   - MQTT on NodePort 31883       (ESP32 / Node-RED connects here)
+#   - EMQX Dashboard on NodePort 31083
+#   - Management REST API on port 18083 (ClusterIP, used by bootstrap Job)
+
+# ─── Replica Count ────────────────────────────────────────────────
+replicaCount: 1
+
+# ─── Image ────────────────────────────────────────────────────────
+image:
+  repository: emqx/emqx
+  tag: "5.6.0"
+  pullPolicy: IfNotPresent
+
+# ─── EMQX Configuration ───────────────────────────────────────────
+emqxConfig:
+  # Dashboard credentials
+  EMQX_DASHBOARD__DEFAULT_USERNAME: "admin"
+  EMQX_DASHBOARD__DEFAULT_PASSWORD: "swms-emqx-dev-2026"
+
+  # Allow higher connection limits for local dev testing
+  EMQX_MQTT__MAX_CONNECTIONS: "1000"
+
+  # Log level for cleaner output
+  EMQX_LOG__CONSOLE__LEVEL: "info"
+
+# ─── Service Configuration ────────────────────────────────────────
+# Use the EMQX chart's native flat port format
+service:
+  type: NodePort
+
+  # Port numbers (the container-side ports)
+  mqtt: 1883
+  mqttssl: 8883
+  ws: 8083
+  wss: 8084
+  dashboard: 18083
+
+  # NodePort assignments (the host-side ports)
+  nodePorts:
+    mqtt: 31883      # F1 ESP32 / Node-RED connects here
+    dashboard: 31083 # EMQX Dashboard UI
+
+# ─── Persistence ──────────────────────────────────────────────────
+# Enabled so Kafka bridge rules survive pod restarts (stored in Mnesia DB)
+persistence:
+  enabled: true
+  size: 1Gi
+
+# ─── Resource Limits ─────────────────────────────────────────────
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

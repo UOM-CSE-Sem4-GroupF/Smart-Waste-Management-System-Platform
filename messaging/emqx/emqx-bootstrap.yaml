@@ -1,0 +1,234 @@
+# Group F — Smart Waste Management System
+# EMQX Bootstrap — MQTT Auth Users + Kafka Bridge Rules
+# Owner: F4 Platform Team
+#
+# This Job runs after EMQX is deployed. It calls the EMQX Management REST API to:
+#   1. Create MQTT auth users (sensor-device, edge-gateway, f1-admin)
+#   2. Create a Kafka Producer connector pointing at the messaging Kafka cluster
+#   3. Create Rule 1: sensors/+/telemetry → waste.bin.telemetry
+#   4. Create Rule 2: vehicles/+/location → waste.vehicle.location
+#
+# EMQX Management API: http://emqx.messaging.svc.cluster.local:18083
+# Dashboard: http://localhost:31083 (via NodePort)
+# MQTT: localhost:31883 (via NodePort)
+
+---
+# ─── ConfigMap: Bootstrap script ─────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: emqx-bootstrap-script
+  namespace: messaging
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+data:
+  bootstrap.sh: |
+    #!/bin/sh
+    set -e
+
+    EMQX_API="http://emqx.messaging.svc.cluster.local:18083/api/v5"
+    EMQX_AUTH="admin:swms-emqx-dev-2026"
+    KAFKA_HOST="kafka.messaging.svc.cluster.local:9092"
+
+    # Kafka SASL credentials (same as in Vault secret/swms/kafka)
+    KAFKA_USER="user1"
+    KAFKA_PASS="QA7aKGtPHV"
+
+    # Helper to call EMQX Management API
+    api_call() {
+      METHOD="$1"
+      REQ_PATH="$2"
+      DATA="$3"
+      curl -sf -X "$METHOD" \
+        -u "$EMQX_AUTH" \
+        -H "Content-Type: application/json" \
+        -d "$DATA" \
+        "${EMQX_API}${REQ_PATH}"
+    }
+
+    echo "======================================================"
+    echo " Group F SWMS — EMQX Bootstrap"
+    echo " API: $EMQX_API"
+    echo "======================================================"
+
+    # ── Wait for EMQX API to be ready ────────────────────────
+    echo "[1/4] Waiting for EMQX Management API..."
+    until curl -sf -u "$EMQX_AUTH" "${EMQX_API}/status" > /dev/null 2>&1; do
+      echo "  EMQX not ready yet, retrying in 5s..."
+      sleep 5
+    done
+    echo "  ✅ EMQX Management API is ready."
+
+    # ── Create MQTT auth users ────────────────────────────────
+    echo "[2/4] Creating MQTT authentication users..."
+
+    # F1 ESP32 devices
+    api_call POST "/authentication/password_based:built_in_database/users" \
+      '{"user_id":"sensor-device","password":"swms-sensor-dev-2026","is_superuser":false}' \
+      2>/dev/null || echo "  ℹ️  sensor-device user may already exist."
+    echo "  ✅ sensor-device created."
+
+    # Raspberry Pi edge gateway (Node-RED)
+    api_call POST "/authentication/password_based:built_in_database/users" \
+      '{"user_id":"edge-gateway","password":"swms-edge-dev-2026","is_superuser":false}' \
+      2>/dev/null || echo "  ℹ️  edge-gateway user may already exist."
+    echo "  ✅ edge-gateway created."
+
+    # F1 admin for manual testing
+    api_call POST "/authentication/password_based:built_in_database/users" \
+      '{"user_id":"f1-admin","password":"swms-f1-admin-2026","is_superuser":true}' \
+      2>/dev/null || echo "  ℹ️  f1-admin user may already exist."
+    echo "  ✅ f1-admin created."
+
+    # ── Create Kafka Producer Connector ──────────────────────
+    echo "[3/4] Creating Kafka Producer connector..."
+    api_call PUT "/connectors/kafka_producer:swms-kafka" \
+      "{
+        \"type\": \"kafka_producer\",
+        \"name\": \"swms-kafka\",
+        \"bootstrap_hosts\": \"${KAFKA_HOST}\",
+        \"connect_timeout\": \"5s\",
+        \"min_metadata_refresh_interval\": \"3s\",
+        \"metadata_request_timeout\": \"5s\",
+        \"authentication\": {
+          \"mechanism\": \"scram_sha_256\",
+          \"username\": \"${KAFKA_USER}\",
+          \"password\": \"${KAFKA_PASS}\"
+        },
+        \"socket_opts\": {
+          \"sndbuf\": \"1024KB\",
+          \"recbuf\": \"1024KB\"
+        },
+        \"ssl\": {\"enable\": false}
+      }" || echo "  ℹ️  Kafka connector may already exist."
+    echo "  ✅ Kafka connector 'swms-kafka' created."
+
+    # ── Create Rules with Kafka Actions ──────────────────────
+    echo "[4/4] Creating MQTT → Kafka bridge rules..."
+
+    # Rule 1: sensor telemetry → waste.bin.telemetry
+    api_call POST "/rules" \
+      "{
+        \"id\": \"swms_sensor_to_kafka\",
+        \"name\": \"Sensor Telemetry to Kafka\",
+        \"sql\": \"SELECT payload, clientid, topic, timestamp FROM \\\"sensors/#\\\"\",
+        \"actions\": [
+          {
+            \"function\": \"kafka_producer:swms-kafka\",
+            \"args\": {
+              \"topic\": \"waste.bin.telemetry\",
+              \"message\": {
+                \"key\": \"\${clientid}\",
+                \"value\": \"{\\\\\\\"version\\\\\\\":\\\\\\\"1.0\\\\\\\",\\\\\\\"source_service\\\\\\\":\\\\\\\"emqx\\\\\\\",\\\\\\\"timestamp\\\\\\\":\\\\\\\"\${timestamp}\\\\\\\",\\\\\\\"payload\\\\\\\":\${payload}}\"
+              },
+              \"max_batch_bytes\": \"896KB\",
+              \"compression\": \"no_compression\",
+              \"partition_strategy\": \"key_dispatch\"
+            }
+          }
+        ],
+        \"description\": \"Bridges ESP32/RPi MQTT sensor readings to Kafka waste.bin.telemetry\",
+        \"enable\": true
+      }" || echo "  ℹ️  Rule swms_sensor_to_kafka may already exist."
+    echo "  ✅ Rule 'Sensor Telemetry to Kafka' created."
+
+    # Rule 2: vehicle GPS → waste.vehicle.location
+    api_call POST "/rules" \
+      "{
+        \"id\": \"swms_vehicle_to_kafka\",
+        \"name\": \"Vehicle Location to Kafka\",
+        \"sql\": \"SELECT payload, clientid, topic, timestamp FROM \\\"vehicles/#\\\"\",
+        \"actions\": [
+          {
+            \"function\": \"kafka_producer:swms-kafka\",
+            \"args\": {
+              \"topic\": \"waste.vehicle.location\",
+              \"message\": {
+                \"key\": \"\${clientid}\",
+                \"value\": \"{\\\\\\\"version\\\\\\\":\\\\\\\"1.0\\\\\\\",\\\\\\\"source_service\\\\\\\":\\\\\\\"emqx\\\\\\\",\\\\\\\"timestamp\\\\\\\":\\\\\\\"\${timestamp}\\\\\\\",\\\\\\\"payload\\\\\\\":\${payload}}\"
+              },
+              \"max_batch_bytes\": \"896KB\",
+              \"compression\": \"no_compression\",
+              \"partition_strategy\": \"key_dispatch\"
+            }
+          }
+        ],
+        \"description\": \"Bridges Flutter driver GPS pings to Kafka waste.vehicle.location\",
+        \"enable\": true
+      }" || echo "  ℹ️  Rule swms_vehicle_to_kafka may already exist."
+    echo "  ✅ Rule 'Vehicle Location to Kafka' created."
+
+    echo ""
+    echo "======================================================"
+    echo " ✅ EMQX Bootstrap Complete!"
+    echo ""
+    echo " MQTT Credentials (for F1 team):"
+    echo "   Broker:    <minikube-ip>:31883"
+    echo "   User/Pass: sensor-device / swms-sensor-dev-2026"
+    echo "   User/Pass: edge-gateway  / swms-edge-dev-2026"
+    echo "   Test user: f1-admin      / swms-f1-admin-2026"
+    echo ""
+    echo " Kafka Bridge Rules:"
+    echo "   sensors/#  → Kafka waste.bin.telemetry"
+    echo "   vehicles/# → Kafka waste.vehicle.location"
+    echo ""
+    echo " Dashboard: http://localhost:31083"
+    echo "   User: admin / swms-emqx-dev-2026"
+    echo "======================================================"
+
+---
+# ─── ServiceAccount for bootstrap Job ────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: emqx-bootstrap
+  namespace: messaging
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+
+---
+# ─── Bootstrap Job ────────────────────────────────────────────────
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: emqx-bootstrap
+  namespace: messaging
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 10
+  template:
+    metadata:
+      name: emqx-bootstrap
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: emqx-bootstrap
+      containers:
+        - name: emqx-bootstrap
+          # Use curl-capable Alpine image — no heavy Vault/EMQX image needed
+          image: curlimages/curl:8.6.0
+          command:
+            - /bin/sh
+            - /scripts/bootstrap.sh
+          env:
+            - name: HOME
+              value: "/tmp"
+          resources:
+            requests:
+              memory: 32Mi
+              cpu: 25m
+            limits:
+              memory: 64Mi
+              cpu: 100m
+          volumeMounts:
+            - name: bootstrap-script
+              mountPath: /scripts
+      volumes:
+        - name: bootstrap-script
+          configMap:
+            name: emqx-bootstrap-script
+            defaultMode: 0755
