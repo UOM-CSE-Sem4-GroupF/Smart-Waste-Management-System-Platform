@@ -1,0 +1,247 @@
+# Group F — Smart Waste Management System
+# Vault Secret Seeding Job
+# Owner: F4 Platform Team
+#
+# This Job runs after Vault is deployed. It:
+#   1. Enables the KV v2 secrets engine
+#   2. Seeds all platform secrets under secret/swms/
+#   3. Enables the Kubernetes auth method
+#   4. Creates policies and roles for each service
+#
+# Usage: kubectl apply -f auth/vault/vault-policies.yaml -n auth
+#
+# Root Token (dev mode): swms-vault-dev-root-token
+# UI: http://localhost:30820
+
+---
+# ─── ConfigMap: Vault bootstrap script ────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-bootstrap-script
+  namespace: auth
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+data:
+  bootstrap.sh: |
+    #!/bin/bash
+
+    VAULT_ADDR="http://vault.auth.svc.cluster.local:8200"
+    VAULT_TOKEN="swms-vault-dev-root-token"
+
+    export VAULT_ADDR VAULT_TOKEN
+
+    echo "======================================================"
+    echo " Group F SWMS — Vault Bootstrap"
+    echo " Vault: $VAULT_ADDR"
+    echo "======================================================"
+
+    # ── Wait for Vault to be ready ────────────────────────────
+    # Use curl on the HTTP health endpoint — vault status CLI returns exit 2
+    # even when unsealed (dev mode quirk), which would abort with set -e.
+    echo "[1/6] Waiting for Vault to be ready..."
+    until curl -sf "$VAULT_ADDR/v1/sys/health?standbyok=true" > /dev/null 2>&1; do
+      echo "  Vault not ready yet, retrying in 3s..."
+      sleep 3
+    done
+    echo "  ✅ Vault is ready and unsealed."
+
+    # Enable set -e AFTER the wait loop to avoid premature exit on curl non-zero
+    set -e
+
+    # ── Enable KV v2 secrets engine ──────────────────────────
+    echo "[2/6] Enabling KV v2 secrets engine at secret/..."
+    vault secrets enable -version=2 -path=secret kv 2>/dev/null || \
+      echo "  ℹ️  KV engine already enabled — skipping."
+
+    # ── Seed Kafka secrets ────────────────────────────────────
+    echo "[3/6] Seeding secrets at secret/swms/kafka..."
+    vault kv put secret/swms/kafka \
+      sasl_username="user1" \
+      sasl_password="QA7aKGtPHV" \
+      bootstrap_server="kafka.messaging.svc.cluster.local:9092" \
+      security_protocol="SASL_PLAINTEXT" \
+      sasl_mechanism="SCRAM-SHA-256"
+    echo "  ✅ Kafka secrets stored."
+
+    # ── Seed Keycloak secrets ─────────────────────────────────
+    echo "[3b/6] Seeding secrets at secret/swms/keycloak..."
+    vault kv put secret/swms/keycloak \
+      admin_user="admin" \
+      admin_password="swms-admin-dev-2026" \
+      realm_name="waste-management" \
+      service_url="http://keycloak.auth.svc.cluster.local/auth"
+    echo "  ✅ Keycloak secrets stored."
+
+    # ── Seed PostgreSQL secrets ───────────────────────────────
+    echo "[3c/6] Seeding secrets at secret/swms/postgres..."
+    vault kv put secret/swms/postgres \
+      keycloak_db_password="swms-kc-dev-2026" \
+      postgres_password="swms-pg-dev-2026" \
+      keycloak_db_url="jdbc:postgresql://keycloak-postgresql.auth.svc.cluster.local:5432/bitnami_keycloak"
+    echo "  ✅ PostgreSQL secrets stored."
+
+    # ── Write Vault Policies ──────────────────────────────────
+    echo "[4/6] Writing access policies..."
+
+    # Platform admin: full read/write to all swms secrets
+    vault policy write platform-admin - <<EOF
+    path "secret/data/swms/*" {
+      capabilities = ["create", "read", "update", "delete", "list"]
+    }
+    path "secret/metadata/swms/*" {
+      capabilities = ["list", "read"]
+    }
+    EOF
+    echo "  ✅ Policy 'platform-admin' created."
+
+    # Kafka consumer: read-only access to Kafka secrets
+    vault policy write kafka-consumer - <<EOF
+    path "secret/data/swms/kafka" {
+      capabilities = ["read"]
+    }
+    EOF
+    echo "  ✅ Policy 'kafka-consumer' created."
+
+    # Keycloak service: read-only access to Keycloak and Postgres secrets
+    vault policy write keycloak-service - <<EOF
+    path "secret/data/swms/keycloak" {
+      capabilities = ["read"]
+    }
+    path "secret/data/swms/postgres" {
+      capabilities = ["read"]
+    }
+    EOF
+    echo "  ✅ Policy 'keycloak-service' created."
+
+    # ── Enable Kubernetes Auth Method ─────────────────────────
+    echo "[5/6] Enabling Kubernetes auth method..."
+    vault auth enable kubernetes 2>/dev/null || \
+      echo "  ℹ️  Kubernetes auth already enabled — skipping."
+
+    vault write auth/kubernetes/config \
+      kubernetes_host="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
+    echo "  ✅ Kubernetes auth configured."
+
+    # ── Create Kubernetes Auth Roles ──────────────────────────
+    echo "[6/6] Creating Kubernetes auth roles..."
+
+    # platform-admin: for F4 setup scripts / admin jobs
+    vault write auth/kubernetes/role/platform-admin \
+      bound_service_account_names="vault-admin" \
+      bound_service_account_namespaces="auth" \
+      policies="platform-admin" \
+      token_ttl="1h"
+    echo "  ✅ Role 'platform-admin' created."
+
+    # kafka-consumer: for F1/F2 microservices that read from Kafka
+    vault write auth/kubernetes/role/kafka-consumer \
+      bound_service_account_names="default" \
+      bound_service_account_namespaces="waste-dev,waste-prod,messaging" \
+      policies="kafka-consumer" \
+      token_ttl="2h"
+    echo "  ✅ Role 'kafka-consumer' created."
+
+    # keycloak-service: for F3 services that need Keycloak creds
+    vault write auth/kubernetes/role/keycloak-service \
+      bound_service_account_names="default" \
+      bound_service_account_namespaces="waste-dev,waste-prod,auth" \
+      policies="keycloak-service" \
+      token_ttl="2h"
+    echo "  ✅ Role 'keycloak-service' created."
+
+    echo ""
+    echo "======================================================"
+    echo " ✅ Vault Bootstrap Complete!"
+    echo " Root Token: $VAULT_TOKEN"
+    echo " UI: http://localhost:30820 (via minikube service)"
+    echo ""
+    echo " Secrets seeded:"
+    echo "   secret/swms/kafka     — SASL credentials"
+    echo "   secret/swms/keycloak  — Admin credentials"
+    echo "   secret/swms/postgres  — DB passwords"
+    echo ""
+    echo " Kubernetes auth roles:"
+    echo "   platform-admin   → auth namespace"
+    echo "   kafka-consumer   → waste-dev, waste-prod, messaging"
+    echo "   keycloak-service → waste-dev, waste-prod, auth"
+    echo "======================================================"
+
+---
+# ─── ServiceAccount for the bootstrap Job ─────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault-bootstrap
+  namespace: auth
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+
+---
+# ─── ClusterRoleBinding for Kubernetes auth ────────────────────────
+# Vault needs to verify pod service account tokens against the cluster
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vault-auth-delegator
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: vault-bootstrap
+    namespace: auth
+
+---
+# ─── Bootstrap Job ────────────────────────────────────────────────
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vault-bootstrap
+  namespace: auth
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 5
+  template:
+    metadata:
+      name: vault-bootstrap
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: vault-bootstrap
+      containers:
+        - name: vault-bootstrap
+          image: hashicorp/vault:1.17
+          command:
+            - /bin/sh
+            - /scripts/bootstrap.sh
+          env:
+            - name: VAULT_ADDR
+              value: "http://vault.auth.svc.cluster.local:8200"
+            - name: VAULT_TOKEN
+              value: "swms-vault-dev-root-token"
+            - name: HOME
+              value: "/tmp"
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 50m
+            limits:
+              memory: 128Mi
+              cpu: 200m
+          volumeMounts:
+            - name: bootstrap-script
+              mountPath: /scripts
+      volumes:
+        - name: bootstrap-script
+          configMap:
+            name: vault-bootstrap-script
+            defaultMode: 0755

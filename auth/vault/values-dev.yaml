@@ -1,0 +1,74 @@
+# Group F — Smart Waste Management System
+# HashiCorp Vault — Helm Values (Local Dev)
+# Chart: hashicorp/vault (official Helm chart)
+# Deployed into: auth namespace
+# Mode: Development (in-memory, auto-unsealed, single node)
+#
+# Usage: helm upgrade --install vault hashicorp/vault -n auth -f auth/vault/values-dev.yaml
+
+global:
+  enabled: true
+
+# ─── Server Configuration ────────────────────────────────────────
+server:
+  # Dev mode: single node, in-memory storage, auto-unsealed
+  # Root token is printed in pod logs on first startup
+  dev:
+    enabled: true
+    devRootToken: "swms-vault-dev-root-token"
+
+  # Expose UI and API on a NodePort for Minikube access
+  service:
+    enabled: true
+    type: NodePort
+    port: 8200
+    nodePort: 30820
+
+  # Resource limits appropriate for Minikube
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 100m
+    limits:
+      memory: 256Mi
+      cpu: 500m
+
+  # Readiness probe — Vault is ready when it returns unsealed status
+  readinessProbe:
+    enabled: true
+    path: "/v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204"
+
+  # Liveness probe
+  livenessProbe:
+    enabled: true
+    path: "/v1/sys/health?standbyok=true"
+    initialDelaySeconds: 60
+
+  # Data storage — in-memory for dev mode (no PVC needed)
+  dataStorage:
+    enabled: false
+
+  # Audit storage disabled for dev mode
+  auditStorage:
+    enabled: false
+
+# ─── UI ──────────────────────────────────────────────────────────
+ui:
+  enabled: true
+  serviceType: NodePort
+  serviceNodePort: 30820
+
+# ─── Injector (Vault Agent Injector) ─────────────────────────────
+# Enabled: this deploys the mutating webhook that auto-injects
+# secrets as sidecar containers into annotated pods.
+# Phase 3: Vault is running but injector wiring to existing services
+#          is deferred — other teams' services are not affected.
+injector:
+  enabled: true
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 50m
+    limits:
+      memory: 128Mi
+      cpu: 250m

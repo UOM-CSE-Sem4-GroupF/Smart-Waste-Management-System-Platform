@@ -1,0 +1,190 @@
+# Group F — Smart Waste Management System
+# Kafka Topic Initialization Job
+# Owner: F4 Platform Team
+#
+# This Kubernetes Job runs once after Kafka is deployed.
+# It creates ALL required Kafka topics with the correct retention settings
+# as defined in service-specifications.md.
+#
+# SASL authentication is handled via the kafka-user-passwords secret
+# that Bitnami Kafka creates automatically.
+#
+# Usage: kubectl apply -f messaging/kafka/topics.yaml -n messaging
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-topic-init
+  namespace: messaging
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+spec:
+  # Job will be cleaned up 5 minutes after completion
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 3
+  template:
+    metadata:
+      name: kafka-topic-init
+    spec:
+      restartPolicy: OnFailure
+      # Wait for the kafka-user-passwords secret to exist before starting
+      initContainers:
+        - name: wait-for-kafka
+          image: public.ecr.aws/bitnami/kafka:4.0.0-debian-12-r10
+          command:
+            - /bin/bash
+            - -c
+            - |
+              echo "Waiting for Kafka to be reachable..."
+              until kafka-topics.sh \
+                --command-config /tmp/client.properties \
+                --bootstrap-server kafka.messaging.svc.cluster.local:9092 \
+                --list &>/dev/null; do
+                echo "  Kafka not ready, retrying in 5s..."
+                sleep 5
+              done
+              echo "Kafka is ready!"
+          env:
+            - name: KAFKA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kafka-user-passwords
+                  key: client-passwords
+          volumeMounts:
+            - name: client-config
+              mountPath: /tmp
+      containers:
+        - name: kafka-topic-init
+          # Use the same public.ecr.aws image as the broker
+          image: public.ecr.aws/bitnami/kafka:4.0.0-debian-12-r10
+          env:
+            - name: KAFKA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kafka-user-passwords
+                  key: client-passwords
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              KAFKA_BROKER="kafka.messaging.svc.cluster.local:9092"
+              CLIENT_CFG="/tmp/client.properties"
+
+              echo "=== Group F SWMS — Kafka Topic Initializer ==="
+              echo "Broker: $KAFKA_BROKER"
+              echo ""
+
+              # Helper function to create a topic idempotently
+              create_topic() {
+                local TOPIC_NAME=$1
+                local PARTITIONS=$2
+                local REPLICATION=$3
+                local RETENTION_MS=$4
+
+                echo "Creating topic: $TOPIC_NAME (partitions=$PARTITIONS, retention=${RETENTION_MS}ms)"
+                kafka-topics.sh \
+                  --command-config "$CLIENT_CFG" \
+                  --bootstrap-server $KAFKA_BROKER \
+                  --create \
+                  --if-not-exists \
+                  --topic "$TOPIC_NAME" \
+                  --partitions "$PARTITIONS" \
+                  --replication-factor "$REPLICATION" \
+                  --config "retention.ms=$RETENTION_MS"
+              }
+
+              # ===========================================================
+              # TOPIC REGISTRY
+              # Source: service-specifications.md — Kafka Topics section
+              # Format: create_topic <name> <partitions> <replication> <retention_ms>
+              # Retention conversions:
+              #   1 day    =    86400000 ms
+              #   3 days   =   259200000 ms
+              #   7 days   =   604800000 ms
+              #   30 days  =  2592000000 ms
+              #   365 days = 31536000000 ms
+              # ===========================================================
+
+              # Raw sensor readings from ESP32 via EMQX → F2 Flink consumers
+              create_topic "waste.bin.telemetry" 6 1 604800000
+
+              # Flink-enriched readings with urgency score → F3 orchestrator
+              create_topic "waste.bin.processed" 6 1 259200000
+
+              # Business state changes → F3 notification, F4 audit
+              create_topic "waste.bin.status.changed" 3 1 259200000
+
+              # New collection jobs → F2 OR-Tools, F3 scheduler
+              create_topic "waste.collection.jobs" 3 1 604800000
+
+              # OR-Tools output → F3 orchestrator
+              create_topic "waste.routes.optimized" 3 1 86400000
+
+              # Airflow triggers → F3 orchestrator
+              create_topic "waste.routine.schedule.trigger" 3 1 86400000
+
+              # Job completion events → F2 Spark, F4 Hyperledger
+              create_topic "waste.job.completed" 3 1 2592000000
+
+              # Driver accept/reject → F3 orchestrator
+              create_topic "waste.driver.responses" 3 1 86400000
+
+              # GPS positions → F3 notification, F2 Flink
+              create_topic "waste.vehicle.location" 6 1 604800000
+
+              # Route deviation alerts → F3 notification
+              create_topic "waste.vehicle.deviation" 3 1 86400000
+
+              # Zone-level aggregations → F3 dashboard, Grafana
+              create_topic "waste.zone.statistics" 3 1 604800000
+
+              # Compliance audit log → F4 Hyperledger (365 day retention)
+              create_topic "waste.audit.events" 3 1 31536000000
+
+              # ML model promotion events → F3 orchestrator
+              create_topic "waste.model.retrained" 3 1 86400000
+
+              echo ""
+              echo "=== All 13 topics created successfully ==="
+              kafka-topics.sh --command-config "$CLIENT_CFG" \
+                --bootstrap-server $KAFKA_BROKER --list
+          volumeMounts:
+            - name: client-config
+              mountPath: /tmp
+      volumes:
+        - name: client-config
+          emptyDir: {}
+      # Shared init logic: write client.properties to emptyDir before topics are created
+      initContainers:
+        - name: write-client-config
+          image: public.ecr.aws/bitnami/kafka:4.0.0-debian-12-r10
+          env:
+            - name: KAFKA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kafka-user-passwords
+                  key: client-passwords
+          command:
+            - /bin/bash
+            - -c
+            - |
+              echo "Writing SASL client config..."
+              cat > /tmp/client.properties <<EOF
+              security.protocol=SASL_PLAINTEXT
+              sasl.mechanism=SCRAM-SHA-256
+              sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required username="user1" password="${KAFKA_PASSWORD}";
+              EOF
+              echo "Waiting for Kafka to accept connections..."
+              until kafka-topics.sh \
+                --command-config /tmp/client.properties \
+                --bootstrap-server kafka.messaging.svc.cluster.local:9092 \
+                --list &>/dev/null; do
+                echo "  Not ready, retrying in 5s..."
+                sleep 5
+              done
+              echo "Kafka is ready — proceeding with topic creation."
+          volumeMounts:
+            - name: client-config
+              mountPath: /tmp

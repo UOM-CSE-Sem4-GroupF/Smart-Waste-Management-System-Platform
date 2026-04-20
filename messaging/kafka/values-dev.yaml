@@ -1,0 +1,64 @@
+# Group F — Smart Waste Management System
+# Kafka Helm Values — Local Development
+# Owner: F4 Platform Team
+# Chart: bitnami/kafka
+# Usage: helm install kafka bitnami/kafka -n messaging -f messaging/kafka/values-dev.yaml
+
+global:
+  security:
+    allowInsecureImages: true
+
+# Single broker for local dev (spec says 3 brokers for prod)
+replicaCount: 1
+
+image:
+  registry: public.ecr.aws
+  repository: bitnami/kafka
+
+kraft:
+  enabled: true
+
+controller:
+  replicaCount: 1
+
+broker:
+  replicaCount: 1
+
+# Resource limits are kept low for Minikube
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: 500m
+    memory: 1Gi
+
+# Expose Kafka inside the cluster only
+service:
+  type: ClusterIP
+
+# Use a smaller persistent volume for dev
+persistence:
+  enabled: true
+  size: 2Gi
+
+# Log retention per topic will be configured via topics.yaml
+# Global defaults
+extraConfig: |-
+  auto.create.topics.enable=false
+  default.replication.factor=1
+  num.partitions=3
+  log.retention.hours=168
+
+# Disable Zookeeper — using KRaft mode (built-in quorum)
+zookeeper:
+  enabled: false
+
+# Expose an internal service for other pods to connect
+externalAccess:
+  enabled: false
+
+# Readiness probe settings
+readinessProbe:
+  initialDelaySeconds: 30
+  periodSeconds: 10

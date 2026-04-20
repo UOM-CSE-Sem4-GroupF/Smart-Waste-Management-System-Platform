@@ -1,0 +1,172 @@
+{
+  "id": "waste-management",
+  "realm": "waste-management",
+  "displayName": "Group F — Smart Waste Management System",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 300,
+  "refreshTokenMaxReuse": 0,
+  "roles": {
+    "realm": [
+      {
+        "name": "admin",
+        "description": "Full system access — all management operations"
+      },
+      {
+        "name": "supervisor",
+        "description": "Monitors dashboards, handles escalations, can cancel jobs"
+      },
+      {
+        "name": "fleet-operator",
+        "description": "Manages vehicle fleet and driver assignments"
+      },
+      {
+        "name": "driver",
+        "description": "Field driver — can accept/reject jobs, mark bins collected"
+      },
+      {
+        "name": "viewer",
+        "description": "Read-only access to dashboards and reports"
+      },
+      {
+        "name": "sensor-device",
+        "description": "Automated role for EMQX/IoT device authentication"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "swms-dashboard",
+      "name": "SWMS Next.js Dashboard",
+      "description": "Next.js supervisor dashboard (F3)",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "dashboard-client-secret-dev",
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://swms-dashboard.local/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "http://swms-dashboard.local"
+      ],
+      "protocol": "openid-connect",
+      "attributes": {
+        "access.token.lifespan": "300",
+        "use.refresh.tokens": "true"
+      },
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email",
+        "roles"
+      ],
+      "optionalClientScopes": []
+    },
+    {
+      "clientId": "swms-mobile",
+      "name": "SWMS Flutter Driver App",
+      "description": "Flutter mobile app for drivers (F3)",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [
+        "io.groupf.swms://callback",
+        "http://localhost/*"
+      ],
+      "webOrigins": [
+        "*"
+      ],
+      "protocol": "openid-connect",
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "access.token.lifespan": "300"
+      },
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email",
+        "roles"
+      ],
+      "optionalClientScopes": []
+    },
+    {
+      "clientId": "kong-gateway",
+      "name": "Kong API Gateway",
+      "description": "Kong uses this to validate JWTs via OIDC introspection",
+      "enabled": true,
+      "publicClient": false,
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "kong-client-secret-dev",
+      "protocol": "openid-connect"
+    }
+  ],
+  "identityProviders": [],
+  "users": [
+    {
+      "username": "test-supervisor",
+      "email": "supervisor@swms-dev.local",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Test",
+      "lastName": "Supervisor",
+      "realmRoles": [
+        "supervisor"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "swms-supervisor-dev",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "test-driver",
+      "email": "driver@swms-dev.local",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Test",
+      "lastName": "Driver",
+      "realmRoles": [
+        "driver"
+      ],
+      "attributes": {
+        "zone_id": [
+          "Zone-1"
+        ],
+        "vehicle_id": [
+          "LORRY-01"
+        ],
+        "shift_start": [
+          "08:00"
+        ],
+        "shift_end": [
+          "17:00"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "swms-driver-dev",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

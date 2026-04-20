@@ -1,0 +1,17 @@
+# Keycloak Realm ConfigMap
+# Mounts realm-export.json into Keycloak's /data/import directory.
+# Keycloak will automatically import this realm on first startup.
+#
+# Applied via setup-local.sh (step 7)
+# Owner: F4 Platform Team
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-realm-config
+  namespace: auth
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+data:
+  waste-management-realm.json: |
