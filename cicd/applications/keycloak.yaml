@@ -1,0 +1,72 @@
+# Group F — Smart Waste Management System
+# Argo CD Application: keycloak
+# Owner: F4 Platform Team
+#
+# Multi-source pattern (Argo CD >= 2.6):
+#   Source 1: Bitnami Keycloak OCI chart
+#   Source 2: This repo ($values ref) — provides auth/keycloak/values-dev.yaml
+#   Source 3: This repo (directory) — applies realm-configmap.yaml
+#
+# Chart version: pin to the version installed by setup-local.sh.
+#   Run: helm search repo bitnami/keycloak --versions | head -5
+#   Update targetRevision below and in scripts/setup-local.sh together.
+# Namespace: auth
+#
+# NOTE: The waste-management realm is imported automatically via the
+# keycloak-realm-config ConfigMap (realm-configmap.yaml in auth/keycloak/).
+# Keycloak reads it on first startup via --import-realm (set in values-dev.yaml).
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: keycloak
+  namespace: cicd
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    component: auth
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+
+  sources:
+    - repoURL: registry-1.docker.io/bitnamicharts
+      chart: keycloak
+      # Update this version when upgrading Keycloak — match setup-local.sh
+      targetRevision: "24.4.7"
+      helm:
+        releaseName: keycloak
+        valueFiles:
+          - $values/auth/keycloak/values-dev.yaml
+
+    - repoURL: https://github.com/UOM-CSE-Sem4-GroupF/group-f-platform
+      targetRevision: main
+      ref: values
+
+    # Apply the realm ConfigMap from auth/keycloak/realm-configmap.yaml
+    - repoURL: https://github.com/UOM-CSE-Sem4-GroupF/group-f-platform
+      targetRevision: main
+      path: auth/keycloak
+      directory:
+        include: "realm-configmap.yaml"
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: auth
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+
+  ignoreDifferences:
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /spec/volumeClaimTemplates

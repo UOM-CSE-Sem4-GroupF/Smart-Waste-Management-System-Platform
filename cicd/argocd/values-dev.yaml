@@ -1,0 +1,126 @@
+# Group F — Smart Waste Management System
+# Argo CD — Helm Values (Local Dev)
+# Chart: argo/argo-cd (official Argo CD Helm chart)
+# Deployed into: cicd namespace
+# NodePort: 30800 (free — existing ports: 30080 Kong, 30180 Keycloak, 30820 Vault, 31083/31883 EMQX)
+#
+# Usage: helm upgrade --install argocd argo/argo-cd -n cicd -f cicd/argocd/values-dev.yaml
+
+global:
+  domain: argocd.local
+
+# ─── Core Config ──────────────────────────────────────────────────────────────
+configs:
+  params:
+    # Run without TLS — Minikube ingress termination, not needed for local dev
+    server.insecure: "true"
+
+  cm:
+    # How often Argo CD checks git for drift
+    timeout.reconciliation: 180s
+    # Label key used to track which Application manages a resource
+    application.instanceLabelKey: argocd.argoproj.io/app-name
+    # Ignore aggregated roles in RBAC diff (reduces spurious sync diffs)
+    resource.compareoptions: |
+      ignoreAggregatedRoles: true
+    # Allow multi-source Applications (Argo CD >= 2.6)
+    application.resourceTrackingMethod: annotation
+
+  # ─── RBAC ───────────────────────────────────────────────────────────────────
+  rbac:
+    # Default: everyone gets read-only
+    policy.default: role:readonly
+    policy.csv: |
+      # F4 platform team gets full control
+      p, role:f4-devops, applications, *, */*, allow
+      p, role:f4-devops, clusters, get, *, allow
+      p, role:f4-devops, repositories, *, *, allow
+      p, role:f4-devops, projects, get, *, allow
+      p, role:f4-devops, logs, get, */*, allow
+      g, f4-devops, role:f4-devops
+
+# ─── Server ───────────────────────────────────────────────────────────────────
+server:
+  extraArgs:
+    - --insecure
+
+  service:
+    type: NodePort
+    nodePortHttp: 30800
+
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: false  # Enable when Prometheus is deployed (monitoring namespace)
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ─── Application Controller ───────────────────────────────────────────────────
+controller:
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: false
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# ─── Repo Server ──────────────────────────────────────────────────────────────
+repoServer:
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: false
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ─── ApplicationSet Controller ────────────────────────────────────────────────
+applicationSet:
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: false
+
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# ─── Redis ────────────────────────────────────────────────────────────────────
+redis:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# ─── Dex (SSO) ────────────────────────────────────────────────────────────────
+# Disabled for local dev — add Keycloak OIDC integration as phase 2
+dex:
+  enabled: false
+
+# ─── Notifications ────────────────────────────────────────────────────────────
+notifications:
+  enabled: false  # Phase 2: wire up Slack/email for job alerts

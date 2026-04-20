@@ -271,6 +271,77 @@ kubectl wait --for=condition=complete job/emqx-bootstrap -n messaging --timeout=
   && log_success "EMQX bootstrap complete. MQTT ↔ Kafka bridge is live." \
   || log_warn "Bootstrap job still running. Check: kubectl logs -n messaging -l job-name=emqx-bootstrap"
 
+# --- Step 11: Deploy Argo CD + Image Updater ---
+log_step "Step 11: Deploying Argo CD + Image Updater (cicd namespace)"
+
+# Add the official Argo CD Helm repo (idempotent)
+if ! helm repo list 2>/dev/null | grep -q "^argo\s"; then
+  log_info "Adding Argo CD Helm repo..."
+  helm repo add argo https://argoproj.github.io/argo-helm
+  helm repo update
+else
+  log_info "Argo Helm repo already added."
+fi
+
+# Install / upgrade Argo CD
+if helm status argocd -n cicd &>/dev/null; then
+  log_warn "Argo CD already deployed — upgrading..."
+  helm upgrade argocd argo/argo-cd \
+    --namespace cicd \
+    --values ./cicd/argocd/values-dev.yaml \
+    --wait \
+    --timeout 10m
+else
+  log_info "Installing Argo CD..."
+  helm install argocd argo/argo-cd \
+    --namespace cicd \
+    --values ./cicd/argocd/values-dev.yaml \
+    --wait \
+    --timeout 10m
+  log_success "Argo CD deployed."
+fi
+
+# Install / upgrade Argo CD Image Updater
+if helm status argocd-image-updater -n cicd &>/dev/null; then
+  log_warn "Argo CD Image Updater already deployed — upgrading..."
+  helm upgrade argocd-image-updater argo/argocd-image-updater \
+    --namespace cicd \
+    --values ./cicd/argocd/image-updater-values.yaml \
+    --wait \
+    --timeout 5m
+else
+  log_info "Installing Argo CD Image Updater..."
+  helm install argocd-image-updater argo/argocd-image-updater \
+    --namespace cicd \
+    --values ./cicd/argocd/image-updater-values.yaml \
+    --wait \
+    --timeout 5m
+  log_success "Argo CD Image Updater deployed."
+fi
+
+# Apply AppProjects and bootstrap root Application
+log_info "Applying Argo CD AppProjects..."
+kubectl apply -n cicd -f ./cicd/projects/
+
+log_info "Bootstrapping App-of-Apps root Application..."
+kubectl apply -n cicd -f ./cicd/bootstrap/root-app.yaml
+
+log_info "Waiting for Argo CD server to be ready..."
+kubectl wait --for=condition=available deployment/argocd-server \
+  -n cicd \
+  --timeout=120s
+
+ARGOCD_PASSWORD=$(kubectl -n cicd get secret argocd-initial-admin-secret \
+  -o jsonpath='{.data.password}' | base64 -d 2>/dev/null || echo "<not available yet>")
+
+log_success "Argo CD is live at http://localhost:30800"
+log_info  "  Admin user:     admin"
+log_info  "  Admin password: ${ARGOCD_PASSWORD}"
+log_info  "  Change password: argocd account update-password --current-password '${ARGOCD_PASSWORD}'"
+log_info  ""
+log_info  "NOTE: Image Updater needs a GHCR pull secret and SSH deploy key to work."
+log_info  "      See cicd/README.md → 'Prerequisites for Image Updater'."
+
 # --- Final: Cluster status ---
 log_step "Final: Cluster status"
 
@@ -283,12 +354,13 @@ echo "================================================================"
 echo "  Setup complete!"
 echo ""
 echo "  Access URLs (NodePort — works directly after minikube start):"
-echo "  Kafka:        kafka.messaging.svc.cluster.local:9092  (internal)"
-echo "  Kong Proxy:   http://localhost:30080  (NodePort)"
-echo "  Keycloak:     http://localhost:30180  (NodePort)"
-echo "  Vault UI:     http://localhost:30820  (NodePort)"
-echo "  EMQX MQTT:    <minikube-ip>:31883  (NodePort — for ESP32/Node-RED)"
+echo "  Kafka:          kafka.messaging.svc.cluster.local:9092  (internal)"
+echo "  Kong Proxy:     http://localhost:30080  (NodePort)"
+echo "  Keycloak:       http://localhost:30180  (NodePort)"
+echo "  Vault UI:       http://localhost:30820  (NodePort)"
+echo "  EMQX MQTT:      <minikube-ip>:31883  (NodePort — for ESP32/Node-RED)"
 echo "  EMQX Dashboard: http://localhost:31083  (NodePort)"
+echo "  Argo CD:        http://localhost:30800  (NodePort)"
 echo ""
 echo "  Keycloak Admin:"
 echo "    URL:      http://localhost:30180/admin"
@@ -312,8 +384,14 @@ echo "  Test Users (Keycloak):"
 echo "    supervisor@swms-dev.local / swms-supervisor-dev"
 echo "    driver@swms-dev.local     / swms-driver-dev"
 echo ""
+echo "  Argo CD Admin:"
+echo "    URL:      http://localhost:30800"
+echo "    User:     admin"
+echo "    Password: (printed above by Step 11)"
+echo ""
 echo "  Next steps:"
 echo "  1. Deploy Prometheus + Grafana (monitoring/)"
-echo "  2. Deploy Argo CD (cicd/)"
+echo "  2. Create Image Updater SSH deploy key (see cicd/README.md)"
+echo "  3. Create ghcr-pull-secret in cicd namespace (see cicd/README.md)"
 echo "================================================================"
 

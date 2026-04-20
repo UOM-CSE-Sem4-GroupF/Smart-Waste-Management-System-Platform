@@ -1,0 +1,23 @@
+# Group F — Smart Waste Management System
+# CODEOWNERS — F4 platform team is the required reviewer for all platform files.
+# GitHub enforces at least 1 review from a CODEOWNER before merge to main.
+#
+# Syntax: <file-pattern> <@org/team or @user>
+# Teams must exist in the UOM-CSE-Sem4-GroupF GitHub organization.
+
+# F4 owns all platform infrastructure and CI/CD
+*                           @UOM-CSE-Sem4-GroupF/f4-platform
+.github/                    @UOM-CSE-Sem4-GroupF/f4-platform
+cicd/                       @UOM-CSE-Sem4-GroupF/f4-platform
+scripts/                    @UOM-CSE-Sem4-GroupF/f4-platform
+namespaces/                 @UOM-CSE-Sem4-GroupF/f4-platform
+
+# Each sub-group reviews their own config directories
+messaging/                  @UOM-CSE-Sem4-GroupF/f4-platform @UOM-CSE-Sem4-GroupF/f1-team
+gateway/                    @UOM-CSE-Sem4-GroupF/f4-platform
+auth/                       @UOM-CSE-Sem4-GroupF/f4-platform
+
+# Docs are open to all sub-groups
+*.md                        @UOM-CSE-Sem4-GroupF/f4-platform
+CLAUDE.md                   @UOM-CSE-Sem4-GroupF/f4-platform
+service-specifications.md   @UOM-CSE-Sem4-GroupF/f4-platform

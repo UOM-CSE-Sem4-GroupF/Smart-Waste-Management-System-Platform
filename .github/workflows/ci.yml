@@ -1,0 +1,176 @@
+# Group F — Smart Waste Management System
+# Platform Repository CI
+# Owner: F4 Platform Team
+#
+# Validates all YAML, Helm chart values, K8s manifests, Argo CD Applications,
+# shell scripts, and Markdown in this repo on every PR and push to main.
+#
+# Required status checks for branch protection on main:
+#   yamllint, helm-lint, kubeconform, shellcheck
+
+name: Platform CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  # YAML syntax and formatting
+  # ────────────────────────────────────────────────────────────────────────────
+  yamllint:
+    name: YAML Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run yamllint
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          config_file: .yamllint
+          file_or_dir: >
+            namespaces/namespaces-dev.yaml
+            messaging/kafka/values-dev.yaml
+            messaging/kafka/topics.yaml
+            messaging/emqx/values-dev.yaml
+            gateway/kong/values-dev.yaml
+            gateway/kong/kong-config.yaml
+            auth/keycloak/values-dev.yaml
+            auth/vault/values-dev.yaml
+            cicd/
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Helm values validation against upstream charts
+  # ────────────────────────────────────────────────────────────────────────────
+  helm-lint:
+    name: Helm Lint (${{ matrix.chart.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        chart:
+          - name: kafka
+            repo: oci://registry-1.docker.io/bitnamicharts
+            version: "32.4.3"
+            values: messaging/kafka/values-dev.yaml
+          - name: emqx
+            repo: https://repos.emqx.io/charts
+            version: "5.6.0"
+            values: messaging/emqx/values-dev.yaml
+          - name: kong
+            repo: https://charts.konghq.com
+            version: "2.48.0"
+            values: gateway/kong/values-dev.yaml
+          - name: keycloak
+            repo: oci://registry-1.docker.io/bitnamicharts
+            version: "24.4.7"
+            values: auth/keycloak/values-dev.yaml
+          - name: vault
+            repo: https://helm.releases.hashicorp.com
+            version: "0.29.1"
+            values: auth/vault/values-dev.yaml
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
+
+      - name: Add Helm repos (non-OCI charts)
+        run: |
+          helm repo add kong https://charts.konghq.com 2>/dev/null || true
+          helm repo add hashicorp https://helm.releases.hashicorp.com 2>/dev/null || true
+          helm repo add emqx https://repos.emqx.io/charts 2>/dev/null || true
+          helm repo update
+
+      - name: Pull chart ${{ matrix.chart.name }}
+        run: |
+          REPO="${{ matrix.chart.repo }}"
+          NAME="${{ matrix.chart.name }}"
+          VERSION="${{ matrix.chart.version }}"
+
+          if [[ "$REPO" == oci://* ]]; then
+            helm pull "${REPO}/${NAME}" \
+              --version "${VERSION}" \
+              --untar --untardir /tmp/charts
+          else
+            helm pull "${NAME}" \
+              --repo "${REPO}" \
+              --version "${VERSION}" \
+              --untar --untardir /tmp/charts
+          fi
+
+      - name: Lint ${{ matrix.chart.name }} values
+        run: |
+          helm lint /tmp/charts/${{ matrix.chart.name }} \
+            --values ${{ matrix.chart.values }}
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Kubernetes manifest schema validation
+  # ────────────────────────────────────────────────────────────────────────────
+  kubeconform:
+    name: Kubeconform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubeconform
+        run: |
+          curl -sSL \
+            https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz \
+            | tar xz
+          sudo mv kubeconform /usr/local/bin/
+
+      - name: Validate K8s manifests
+        run: |
+          # Validate plain K8s manifests (namespaces, Kafka topics Job, Kong ConfigMap)
+          find namespaces messaging/kafka/topics.yaml gateway/kong/kong-config.yaml \
+            auth/keycloak/realm-configmap.yaml auth/vault/vault-policies.yaml \
+            -name "*.yaml" 2>/dev/null | \
+          kubeconform \
+            -strict \
+            -summary \
+            -kubernetes-version 1.29.0 \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            -ignore-missing-schemas
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Shell script static analysis
+  # ────────────────────────────────────────────────────────────────────────────
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: ./scripts
+          severity: warning
+          check_together: yes
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Markdown link checking
+  # ────────────────────────────────────────────────────────────────────────────
+  markdown-links:
+    name: Markdown Links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: gaurav-nelson/github-action-markdown-link-check@v1
+        with:
+          use-quiet-mode: "yes"
+          use-verbose-mode: "no"
+          check-modified-files-only: "no"
+          config-file: ".github/mlc-config.json"
+        continue-on-error: true  # Non-blocking — external links may be temporarily down

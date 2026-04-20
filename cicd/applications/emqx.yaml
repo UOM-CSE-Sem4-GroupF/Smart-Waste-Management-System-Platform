@@ -1,0 +1,61 @@
+# Group F — Smart Waste Management System
+# Argo CD Application: emqx
+# Owner: F4 Platform Team
+#
+# Multi-source pattern (Argo CD >= 2.6):
+#   Source 1: Official EMQX Helm chart
+#   Source 2: This repo ($values ref) — provides messaging/emqx/values-dev.yaml
+#
+# Chart version: 5.6.0 (matches image.tag in messaging/emqx/values-dev.yaml)
+# Namespace: messaging
+#
+# NOTE: The emqx-bootstrap Job (MQTT users + Kafka bridge rules) is applied
+# separately by scripts/setup-local.sh and is NOT managed by this Application.
+# It is a one-time bootstrap, not a steady-state resource.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: emqx
+  namespace: cicd
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    component: messaging
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+
+  sources:
+    - repoURL: https://repos.emqx.io/charts
+      chart: emqx
+      targetRevision: "5.6.0"
+      helm:
+        releaseName: emqx
+        valueFiles:
+          - $values/messaging/emqx/values-dev.yaml
+
+    - repoURL: https://github.com/UOM-CSE-Sem4-GroupF/group-f-platform
+      targetRevision: main
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: messaging
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+
+  ignoreDifferences:
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /spec/volumeClaimTemplates

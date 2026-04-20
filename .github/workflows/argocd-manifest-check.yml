@@ -1,0 +1,104 @@
+# Group F — Smart Waste Management System
+# Argo CD Manifest Validation
+# Owner: F4 Platform Team
+#
+# Runs only when cicd/ changes are included in a PR.
+# Validates that all Application, AppProject, and ApplicationSet manifests
+# are well-formed against the Argo CD CRD schema.
+
+name: Argo CD Manifest Check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "cicd/**"
+
+jobs:
+  validate:
+    name: Validate Argo CD Manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubeconform
+        run: |
+          curl -sSL \
+            https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz \
+            | tar xz
+          sudo mv kubeconform /usr/local/bin/
+
+      - name: Install yq
+        run: |
+          YQ_VERSION="v4.44.3"
+          curl -sSL \
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" \
+            -o /usr/local/bin/yq
+          chmod +x /usr/local/bin/yq
+
+      - name: Validate manifests against Argo CD CRD schema
+        run: |
+          find cicd/projects cicd/bootstrap cicd/applications cicd/appsets \
+            -name "*.yaml" | \
+          kubeconform \
+            -strict \
+            -summary \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            -ignore-missing-schemas
+
+      - name: Check required Application fields
+        run: |
+          FAILED=0
+          for f in cicd/applications/*.yaml; do
+            echo "Checking $f..."
+            KIND=$(yq eval '.kind' "$f")
+
+            # Only validate Application resources (skip commented-out stubs)
+            if [ "$KIND" != "Application" ]; then
+              echo "  Skipping (kind=$KIND)"
+              continue
+            fi
+
+            PROJECT=$(yq eval '.spec.project' "$f")
+            if [ "$PROJECT" = "null" ] || [ -z "$PROJECT" ]; then
+              echo "  ERROR: missing .spec.project"
+              FAILED=1
+            fi
+
+            DEST=$(yq eval '.spec.destination.server' "$f")
+            if [ "$DEST" = "null" ] || [ -z "$DEST" ]; then
+              echo "  ERROR: missing .spec.destination.server"
+              FAILED=1
+            fi
+
+            # Must have either .spec.source or .spec.sources
+            SOURCE=$(yq eval '.spec.source // .spec.sources' "$f")
+            if [ "$SOURCE" = "null" ] || [ -z "$SOURCE" ]; then
+              echo "  ERROR: missing .spec.source or .spec.sources"
+              FAILED=1
+            fi
+
+            echo "  OK (project=$PROJECT)"
+          done
+
+          if [ $FAILED -ne 0 ]; then
+            echo ""
+            echo "One or more Application manifests failed validation."
+            exit 1
+          fi
+
+      - name: Check AppProject definitions
+        run: |
+          FAILED=0
+          for f in cicd/projects/*.yaml; do
+            echo "Checking $f..."
+            KIND=$(yq eval '.kind' "$f")
+            if [ "$KIND" != "AppProject" ]; then
+              echo "  Skipping (kind=$KIND)"
+              continue
+            fi
+            DEST_COUNT=$(yq eval '.spec.destinations | length' "$f")
+            SOURCE_COUNT=$(yq eval '.spec.sourceRepos | length' "$f")
+            echo "  OK (destinations=$DEST_COUNT, sourceRepos=$SOURCE_COUNT)"
+          done

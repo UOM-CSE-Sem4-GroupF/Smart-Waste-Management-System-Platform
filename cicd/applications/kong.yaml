@@ -1,0 +1,74 @@
+# Group F — Smart Waste Management System
+# Argo CD Application: kong
+# Owner: F4 Platform Team
+#
+# Multi-source pattern (Argo CD >= 2.6):
+#   Source 1: Kong official Helm chart
+#   Source 2: This repo ($values ref) — provides gateway/kong/values-dev.yaml
+#   Source 3: This repo (directory) — applies kong-config.yaml (declarative ConfigMap)
+#
+# Chart version: pin to the version installed by setup-local.sh.
+#   Run: helm search repo kong/kong --versions | head -5
+#   Update targetRevision below and in scripts/setup-local.sh together.
+# Namespace: gateway
+#
+# DB-less mode: Kong reads all routes/plugins/services from the
+# kong-declarative-config ConfigMap (gateway/kong/kong-config.yaml).
+# Argo CD manages that ConfigMap via Source 3 below — changes to
+# kong-config.yaml auto-deploy and Kong hot-reloads without restart.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kong
+  namespace: cicd
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    component: gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+
+  sources:
+    - repoURL: https://charts.konghq.com
+      chart: kong
+      # Update this version when upgrading Kong — match setup-local.sh
+      targetRevision: "2.48.0"
+      helm:
+        releaseName: kong
+        valueFiles:
+          - $values/gateway/kong/values-dev.yaml
+
+    - repoURL: https://github.com/UOM-CSE-Sem4-GroupF/group-f-platform
+      targetRevision: main
+      ref: values
+
+    # Apply the declarative config ConfigMap so Argo CD tracks it
+    - repoURL: https://github.com/UOM-CSE-Sem4-GroupF/group-f-platform
+      targetRevision: main
+      path: gateway/kong
+      directory:
+        include: "kong-config.yaml"
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: gateway
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+
+  ignoreDifferences:
+    # Kong generates webhook CA bundles dynamically
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      jsonPointers:
+        - /webhooks/0/clientConfig/caBundle

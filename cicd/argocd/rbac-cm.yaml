@@ -1,0 +1,24 @@
+# Group F — Smart Waste Management System
+# Argo CD RBAC ConfigMap — supplemental role definitions
+# Owner: F4 Platform Team
+#
+# The main RBAC policy is embedded in cicd/argocd/values-dev.yaml (configs.rbac).
+# This file documents the expected GitHub team → Argo CD group mapping.
+#
+# GitHub Teams to create in UOM-CSE-Sem4-GroupF org:
+#   f4-devops  → F4 members (platform team)
+#   f2-team    → F2 members (data/ML team)
+#   f3-team    → F3 members (application team)
+#   f1-team    → F1 members (edge/IoT team)
+#
+# Argo CD SSO with Keycloak (Phase 2):
+#   When Keycloak OIDC is enabled, map Keycloak roles to these group names.
+#   See: https://argo-cd.readthedocs.io/en/stable/operator-manual/user-management/keycloak/
+#
+# Current setup (dev mode):
+#   Login: admin / password printed by setup-local.sh Step 11
+#   Update password: argocd account update-password --current-password <old> --new-password <new>
+
+# NOTE: This file is documentation only — the actual RBAC is configured via
+# the Helm values (configs.rbac.policy.csv in cicd/argocd/values-dev.yaml).
+# Do not apply this file directly with kubectl.
