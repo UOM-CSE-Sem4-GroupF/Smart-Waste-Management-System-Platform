@@ -205,6 +205,39 @@ else
   log_success "Keycloak deployed."
 fi
 
+# --- Step 9: Deploy HashiCorp Vault ---
+log_step "Step 9: Deploying HashiCorp Vault (auth namespace)"
+
+# Add the hashicorp Helm repo (idempotent)
+if ! helm repo list 2>/dev/null | grep -q "hashicorp"; then
+  log_info "Adding HashiCorp Helm repo..."
+  helm repo add hashicorp https://helm.releases.hashicorp.com
+  helm repo update
+else
+  log_info "HashiCorp Helm repo already added."
+fi
+
+if helm status vault -n auth &>/dev/null; then
+  log_warn "Vault already deployed — skipping install."
+else
+  log_info "Installing HashiCorp Vault in dev mode..."
+  helm install vault hashicorp/vault \
+    --namespace auth \
+    --values ./auth/vault/values-dev.yaml \
+    --wait \
+    --timeout 5m
+  log_success "Vault deployed."
+fi
+
+# Run the bootstrap Job to seed secrets and configure K8s auth
+log_info "Applying Vault bootstrap Job (secrets + policies)..."
+kubectl apply -f ./auth/vault/vault-policies.yaml -n auth
+
+log_info "Waiting for vault-bootstrap Job to complete..."
+kubectl wait --for=condition=complete job/vault-bootstrap -n auth --timeout=120s \
+  && log_success "Vault bootstrap complete. All secrets seeded." \
+  || log_warn "Bootstrap job still running. Check: kubectl logs -n auth -l job-name=vault-bootstrap"
+
 # --- Final: Cluster status ---
 log_step "Final: Cluster status"
 
@@ -216,22 +249,28 @@ echo ""
 echo "================================================================"
 echo "  Setup complete!"
 echo ""
-echo "  Access URLs (via: minikube service <name> -n <ns> --url):"
+echo "  Access URLs (NodePort — works directly after minikube start):"
 echo "  Kafka:      kafka.messaging.svc.cluster.local:9092  (internal)"
 echo "  Kong Proxy: http://localhost:30080  (NodePort)"
 echo "  Keycloak:   http://localhost:30180  (NodePort)"
+echo "  Vault UI:   http://localhost:30820  (NodePort)"
 echo ""
 echo "  Keycloak Admin:"
 echo "    URL:      http://localhost:30180/admin"
 echo "    User:     admin"
 echo "    Password: swms-admin-dev-2026"
 echo ""
+echo "  Vault:"
+echo "    UI:       http://localhost:30820"
+echo "    Token:    swms-vault-dev-root-token"
+echo "    Secrets:  secret/swms/kafka | secret/swms/keycloak | secret/swms/postgres"
+echo ""
 echo "  Test Users:"
 echo "    supervisor@swms-dev.local  /  swms-supervisor-dev"
 echo "    driver@swms-dev.local      /  swms-driver-dev"
 echo ""
 echo "  Next steps:"
-echo "  1. Deploy Vault: (coming soon — auth/vault/)"
-echo "  2. Deploy EMQX:  (coming soon — messaging/emqx/)"
+echo "  1. Deploy EMQX: (coming soon — messaging/emqx/)"
+echo "  2. Wire Vault Agent Injector into F1/F2/F3 services"
 echo "================================================================"
 
