@@ -1,0 +1,71 @@
+# 🛡️ SWMS Platform Cheatsheet
+
+A consolidated list of commands for managing the local development infrastructure.
+
+---
+
+## 🚀 Platform Lifecycle
+| Action | Command |
+|--------|---------|
+| **Full Setup** | `bash ./scripts/setup-local.sh` |
+| **Clean Restart** | `minikube delete` → `minikube start` → `bash ./scripts/setup-local.sh` |
+| **Check All Pods** | `kubectl get pods -A` |
+
+---
+
+## ☸️ Kubernetes Essentials
+| Action | Command |
+|--------|---------|
+| **Watch Pods** | `kubectl get pods -n <namespace> -w` |
+| **View Logs** | `kubectl logs <pod-name> -n <namespace> -f` |
+| **Describe Issues** | `kubectl describe pod <pod-name> -n <namespace>` |
+| **Execute Shell** | `kubectl exec -it <pod-name> -n <namespace> -- bash` |
+| **Minikube Dashboard** | `minikube dashboard` |
+
+---
+
+## 🔑 Access & Tunnels (Windows)
+| Action | Command |
+|--------|---------|
+| **DBeaver Tunnel** | `kubectl port-forward -n auth svc/keycloak-postgresql 5432:5432` |
+| **Keycloak UI** | `minikube service keycloak -n auth` |
+| **Kong Proxy** | `minikube service kong-kong-proxy -n gateway` |
+| **Global Tunnel** | `minikube tunnel` (enables LoadBalancers) |
+
+---
+
+## 🎡 Kafka (Messaging)
+| Action | Command |
+|--------|---------|
+| **Check Topics** | `kubectl exec -it kafka-broker-0 -n messaging -- kafka-topics.sh --list --bootstrap-server localhost:9092` |
+| **Consume Topic**| `kubectl exec -it kafka-broker-0 -n messaging -- kafka-console-consumer.sh --topic <name> --from-beginning --bootstrap-server localhost:9092` |
+| **Pod Status** | `kubectl get pods -n messaging` |
+
+---
+
+## 🦍 Kong (Gateway)
+| Action | Command |
+|--------|---------|
+| **Check Config** | `kubectl logs -n gateway -l app.kubernetes.io/name=kong -c kong` |
+| **Verify Routes** | `curl -i http://localhost:30080` (after minikube tunnel) |
+| **Reload Config** | Re-run [./scripts/setup-local.sh](file:///e:/Porjects/sem%204/Software-Engineering/Smart-Wast-Management-System/Smart-Waste-Management-System-Platform/scripts/setup-local.sh) |
+
+---
+
+## 🔐 Keycloak (Identity)
+| Credentials | Value |
+|-------------|-------|
+| **Admin UI** | `http://localhost:30180/admin` |
+| **Admin User** | `admin` |
+| **Admin Pass** | `swms-admin-dev-2026` |
+| **Realms** | `master`, `waste-management` |
+
+---
+
+## 🧹 Cleanup
+| Action | Command |
+|--------|---------|
+| **Delete Kong** | `helm uninstall kong -n gateway` |
+| **Delete Keycloak** | `helm uninstall keycloak -n auth` |
+| **Delete Kafka** | `helm uninstall kafka -n messaging` |
+| **Prune Everything** | `kubectl delete namespaces gateway auth messaging monitoring cicd blockchain waste-dev waste-prod` |
