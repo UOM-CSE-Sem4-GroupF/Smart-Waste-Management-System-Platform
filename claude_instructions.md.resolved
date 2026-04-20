@@ -1,0 +1,66 @@
+# 🤖 Instructions for Claude Code (AWS Terraform Implementation)
+
+Provide this document to Claude Code to guide it in implementing the AWS infrastructure for the Smart Waste Management System (SWMS).
+
+---
+
+## 🎯 Context & Goal
+You are tasked with writing the Terraform infrastructure code to migrate the SWMS platform from a local Minikube environment to AWS. 
+
+We have chosen **Option A (Self-Managed Pods on EKS)** to stay within a strict **$200 AWS credit budget**. 
+
+**Key Constraints:**
+1. **NO NAT Gateways**: They are too expensive ($32/mo). You MUST implement a **NAT Instance** (e.g., `t3.nano`) in the public subnet to handle routing from private subnets.
+2. **NO Amazon RDS**: Postgres will run inside the EKS cluster using the Bitnami Helm chart to save money.
+3. **NO Amazon MSK**: Kafka will run inside the EKS cluster using the Bitnami Helm chart.
+4. **Use Spot Instances**: The EKS managed node group must use Spot instances (e.g., `t3.medium`) to run the heavy workloads (Kafka, Postgres, EMQX) affordably.
+5. **Use Amazon S3**: Create an S3 bucket for shared data (Airflow DAGs, MLflow artifacts, Spark checkpoints).
+
+## 📁 Required Directory Structure
+Create a new directory at `terraform/` in the `group-f-platform` repository. Output the following files:
+
+### 1. `providers.tf` & `backend.tf`
+- Configure the AWS provider (region `us-east-1` or equivalent).
+- Use a local backend for now, or prepare an S3 backend definition commented out.
+
+### 2. `vpc.tf` (CRITICAL COST-SAVING)
+- Create a VPC (e.g., `10.0.0.0/16`).
+- Create 3 Public subnets and 3 Private subnets across 3 Availability Zones.
+- **NAT Instance Setup**:
+  - Launch an EC2 `t3.nano` instance in a public subnet using an Amazon Linux 2023 NAT AMI (or configure iptables via user-data).
+  - Disable Source/Destination checks on this instance.
+  - Route internet-bound traffic from the Private Route Table to this NAT instance's Elastic Network Interface (ENI).
+
+### 3. `eks.tf`
+- Provision the EKS Control Plane (version 1.29+).
+- Attach necessary IAM roles.
+- Create a Managed Node Group in the **Private Subnets**.
+- Specifically set the instance types to `["t3.medium"]` and capacity type to `SPOT`. Set min/max/desired size (e.g., 2).
+
+### 4. `s3.tf`
+- Provision an S3 bucket (e.g., `swms-platform-data-<random-suffix>`).
+- Ensure it is private, block public access, and enable default encryption.
+
+### 5. `helm-releases.tf`
+Configure the `helm` provider using the EKS cluster credentials. Define Terraform `helm_release` blocks for:
+- **Bitnami Postgres** (configure persistent volume claims using EBS storage classes).
+- **Bitnami Kafka** & Zookeeper (minimal footprint).
+- **HashiCorp Vault** (dev mode or standalone).
+- **Kong API Gateway** (Expose the proxy service as a `LoadBalancer` using AWS NLB annotations so it is publicly accessible).
+- **Keycloak** (Bitnami chart, connecting to the Postgres release).
+- **EMQX** (Official EMQX v5 chart, expose port 1883 via a generic K8s `LoadBalancer` / AWS NLB for sensor devices).
+
+### 6. `variables.tf` & `outputs.tf`
+- Expose cluster name, VPC ID, and the public DNS names of the Kong and EMQX Load Balancers.
+
+---
+
+## 🛠️ Step-by-Step Execution Plan for Claude
+
+1. **Acknowledge these constraints**: Before generating code, confirm you understand the NAT Instance requirement over NAT Gateway.
+2. **Generate `vpc.tf` first**: This is the trickiest part due to the NAT Instance routing.
+3. **Generate `eks.tf` & `s3.tf`**: Standard EKS cluster with Spot nodes.
+4. **Generate `helm-releases.tf`**: Wire up the local configurations into Helm via Terraform. Make sure the StorageClasses reference AWS EBS `gp3`.
+5. **Run Initialization**: Run `terraform init` and `terraform fmt`. Do not run `terraform apply` until the user reviews the plan. 
+
+**Pro-tip for Claude**: Refer to the existing Helm values files in the repo (e.g., [auth/keycloak/values-dev.yaml](file:///e:/Porjects/sem%204/Software-Engineering/Smart-Wast-Management-System/Smart-Waste-Management-System-Platform/auth/keycloak/values-dev.yaml), [gateway/kong/kong-config.yaml](file:///e:/Porjects/sem%204/Software-Engineering/Smart-Wast-Management-System/Smart-Waste-Management-System-Platform/gateway/kong/kong-config.yaml), [messaging/emqx/values-dev.yaml](file:///e:/Porjects/sem%204/Software-Engineering/Smart-Wast-Management-System/Smart-Waste-Management-System-Platform/messaging/emqx/values-dev.yaml)) to understand the configurations that need to be replicated or referenced in the Terraform Helm releases.
