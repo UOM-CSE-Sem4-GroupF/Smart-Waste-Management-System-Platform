@@ -145,14 +145,6 @@ resource "helm_release" "vault" {
     name  = "ui.serviceType"
     value = "ClusterIP"
   }
-  set {
-    name  = "server.service.nodePort"
-    value = ""
-  }
-  set {
-    name  = "ui.serviceNodePort"
-    value = ""
-  }
 
   depends_on = [
     kubernetes_namespace.swms,
@@ -171,10 +163,7 @@ resource "null_resource" "vault_bootstrap" {
   }
 
   provisioner "local-exec" {
-    command = <<-EOT
-      sed 's/QA7aKGtPHV/${var.kafka_sasl_password}/g' \
-        ../auth/vault/vault-policies.yaml | kubectl apply -f - -n auth
-    EOT
+    command = "powershell -Command \"(Get-Content ../auth/vault/vault-policies.yaml).Replace('swms-kafka-dev-2026', '${var.kafka_sasl_password}') | kubectl apply -f - -n auth\""
   }
 
   depends_on = [helm_release.vault]
@@ -345,10 +334,7 @@ resource "null_resource" "emqx_bootstrap" {
   }
 
   provisioner "local-exec" {
-    command = <<-EOT
-      sed 's/QA7aKGtPHV/${var.kafka_sasl_password}/g' \
-        ../messaging/emqx/emqx-bootstrap.yaml | kubectl apply -f - -n messaging
-    EOT
+    command = "powershell -Command \"(Get-Content ../messaging/emqx/emqx-bootstrap.yaml).Replace('QA7aKGtPHV', '${var.kafka_sasl_password}') | kubectl apply -f - -n messaging\""
   }
 
   depends_on = [

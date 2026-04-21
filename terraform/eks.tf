@@ -111,13 +111,21 @@ resource "aws_eks_node_group" "main" {
   ami_type  = "AL2_x86_64" # EKS-optimised Amazon Linux 2
   disk_size = 20            # GB — enough for all container images
 
-  # Ensure IAM policies are fully propagated before creating the node group.
-  # Without this, node group creation fails with an IAM error.
+  # Ensure IAM policies AND VPC endpoints are fully propagated before creating
+  # the node group. Without this:
+  #   - IAM: node group creation fails with an IAM error
+  #   - VPC Endpoints: nodes boot before endpoint DNS propagates, causing
+  #     sandbox-image.service to fail (can't pull pause container from ECR)
   depends_on = [
     aws_iam_role_policy_attachment.eks_worker_node,
     aws_iam_role_policy_attachment.eks_cni_policy,
     aws_iam_role_policy_attachment.ecr_read_only,
     aws_iam_role_policy_attachment.ebs_csi,
+    aws_vpc_endpoint.ec2,
+    aws_vpc_endpoint.sts,
+    aws_vpc_endpoint.ecr_api,
+    aws_vpc_endpoint.ecr_dkr,
+    aws_vpc_endpoint.s3,
   ]
 }
 

@@ -1,4 +1,4 @@
-# Group F — Smart Waste Management System
+# Group F - Smart Waste Management System
 # VPC, Subnets, Internet Gateway, NAT Instance, Route Tables
 # Owner: F4 Platform Team
 #
@@ -8,10 +8,10 @@
 #
 # Architecture:
 #   VPC 10.0.0.0/16
-#   ├── Public subnets  10.0.1-3.0/24  (IGW route, ELB tag, NAT instance lives here)
-#   └── Private subnets 10.0.11-13.0/24 (NAT instance route, EKS worker nodes)
+#   |-- Public subnets  10.0.1-3.0/24  (IGW route, ELB tag, NAT instance lives here)
+#   `-- Private subnets 10.0.11-13.0/24 (NAT instance route, EKS worker nodes)
 
-# ── VPC ──────────────────────────────────────────────────────────────────────
+# -- VPC ----------------------------------------------------------------------
 resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true # Required for EKS node registration
@@ -22,7 +22,7 @@ resource "aws_vpc" "main" {
   }
 }
 
-# ── Internet Gateway ──────────────────────────────────────────────────────────
+# -- Internet Gateway ----------------------------------------------------------
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
 
@@ -31,7 +31,7 @@ resource "aws_internet_gateway" "main" {
   }
 }
 
-# ── Public Subnets ────────────────────────────────────────────────────────────
+# -- Public Subnets ------------------------------------------------------------
 # The kubernetes.io/role/elb=1 tag is required for the AWS Load Balancer
 # Controller to automatically provision internet-facing NLBs (Kong, EMQX) in
 # these subnets.
@@ -50,7 +50,7 @@ resource "aws_subnet" "public" {
   }
 }
 
-# ── Private Subnets ───────────────────────────────────────────────────────────
+# -- Private Subnets -----------------------------------------------------------
 # Worker nodes run here. The kubernetes.io/role/internal-elb=1 tag allows the
 # Load Balancer Controller to create internal-facing NLBs in these subnets if
 # needed for intra-cluster services.
@@ -68,7 +68,7 @@ resource "aws_subnet" "private" {
   }
 }
 
-# ── NAT Instance ──────────────────────────────────────────────────────────────
+# -- NAT Instance --------------------------------------------------------------
 # Replaces NAT Gateway to stay under $200 AWS credit budget.
 # NAT Gateway: ~$32/mo fixed + $0.045/GB data
 # NAT Instance (t3.nano): ~$4/mo + no data charge within VPC
@@ -95,7 +95,7 @@ data "aws_ami" "amazon_linux_2023" {
 
 resource "aws_security_group" "nat" {
   name        = "${var.cluster_name}-nat-sg"
-  description = "NAT instance — allows all traffic from VPC CIDR outbound to internet"
+  description = "NAT instance - allows all traffic from VPC CIDR outbound to internet"
   vpc_id      = aws_vpc.main.id
 
   # Allow all traffic originating from within the VPC (private subnet nodes
@@ -108,58 +108,40 @@ resource "aws_security_group" "nat" {
     cidr_blocks = ["10.0.0.0/16"]
   }
 
-  # Allow all outbound to internet
   egress {
-    description = "All outbound to internet"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = {
-    Name = "${var.cluster_name}-nat-sg"
-  }
+  tags = { Name = "${var.cluster_name}-nat-sg" }
 }
 
-resource "aws_instance" "nat" {
-  ami                    = data.aws_ami.amazon_linux_2023.id
-  instance_type          = "t3.nano"
-  subnet_id              = aws_subnet.public[0].id
-  vpc_security_group_ids = [aws_security_group.nat.id]
-
-  # CRITICAL: Disable source/destination check so the instance forwards
-  # packets whose destination IP is not its own. Without this, all
-  # forwarded packets are dropped by AWS.
-  source_dest_check = false
-
-  user_data = base64encode(<<-EOF
-    #!/bin/bash
-    # Enable IP forwarding at kernel level
-    echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
-    sysctl -p
-
-    # Masquerade all VPC traffic going out through eth0 (the public interface)
-    iptables -t nat -A POSTROUTING -o eth0 -s 10.0.0.0/16 -j MASQUERADE
-
-    # Persist iptables rules across reboots
-    # iptables-services is available in Amazon Linux 2023 via dnf
-    dnf install -y iptables-services
-    service iptables save
-    systemctl enable iptables
-  EOF
-  )
+# -- NAT Gateway (Managed) -----------------------------------------------------
+# Replacing the custom NAT instance with a managed NAT Gateway for reliability.
+resource "aws_nat_gateway" "main" {
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.public[0].id
 
   tags = {
-    Name = "${var.cluster_name}-nat-instance"
+    Name = "swms-nat-gateway"
   }
+
+  # Ensure the IGW is active first
+  depends_on = [aws_internet_gateway.main]
+}
+
+resource "aws_route" "private_nat_access" {
+  route_table_id         = aws_route_table.private.id
+  destination_cidr_block = "0.0.0.0/0"
+  nat_gateway_id         = aws_nat_gateway.main.id
 }
 
 # Elastic IP for the NAT instance.
-# Persists even if the instance is replaced — private subnet nodes keep the
+# Persists even if the instance is replaced - private subnet nodes keep the
 # same outbound public IP.
 resource "aws_eip" "nat" {
-  instance = aws_instance.nat.id
   domain   = "vpc"
 
   depends_on = [aws_internet_gateway.main]
@@ -169,7 +151,7 @@ resource "aws_eip" "nat" {
   }
 }
 
-# ── Route Tables ──────────────────────────────────────────────────────────────
+# -- Route Tables --------------------------------------------------------------
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
@@ -183,6 +165,7 @@ resource "aws_route_table" "public" {
   }
 }
 
+# -- Route Table Associations --------------------------------------------------
 resource "aws_route_table_association" "public" {
   count = 3
 
@@ -193,14 +176,7 @@ resource "aws_route_table_association" "public" {
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
 
-  route {
-    cidr_block           = "0.0.0.0/0"
-    # Route to the NAT instance's primary ENI.
-    # Must use network_interface_id — routing via instance_id is deprecated
-    # in the AWS provider and does not survive instance stop/start.
-    network_interface_id = aws_instance.nat.primary_network_interface_id
-  }
-
+  # Routes are managed via aws_route resources below to avoid dependency cycles.
   tags = {
     Name = "${var.cluster_name}-private-rt"
   }
@@ -212,3 +188,92 @@ resource "aws_route_table_association" "private" {
   subnet_id      = aws_subnet.private[count.index].id
   route_table_id = aws_route_table.private.id
 }
+
+# -- VPC Endpoints -------------------------------------------------------------
+# Worker nodes in private subnets need to call AWS APIs (EC2, STS, ECR) for:
+#   - EKS bootstrap: aws ec2 describe-instances (to get PrivateDnsName)
+#   - IAM/IRSA: STS AssumeRoleWithWebIdentity
+#   - kubelet: ECR image pulls (via S3 gateway endpoint, ECR interface endpoints)
+#
+# Interface endpoints eliminate NAT dependency for these calls.
+# Cost: ~$0.01/hr per endpoint per AZ (cheaper than repeated NAT failures).
+
+resource "aws_security_group" "vpc_endpoints" {
+  name        = "${var.cluster_name}-vpce-sg"
+  description = "Allow HTTPS from within the VPC to VPC Interface Endpoints"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "${var.cluster_name}-vpce-sg" }
+}
+
+# EC2 API - required by EKS bootstrap to call describe-instances
+resource "aws_vpc_endpoint" "ec2" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.aws_region}.ec2"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  private_dns_enabled = true
+
+  tags = { Name = "${var.cluster_name}-vpce-ec2" }
+}
+
+# STS - required for IAM Roles for Service Accounts (IRSA) and node registration
+resource "aws_vpc_endpoint" "sts" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.aws_region}.sts"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  private_dns_enabled = true
+
+  tags = { Name = "${var.cluster_name}-vpce-sts" }
+}
+
+# ECR API + DKR - required for kubelet to pull container images
+resource "aws_vpc_endpoint" "ecr_api" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.aws_region}.ecr.api"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  private_dns_enabled = true
+
+  tags = { Name = "${var.cluster_name}-vpce-ecr-api" }
+}
+
+resource "aws_vpc_endpoint" "ecr_dkr" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.aws_region}.ecr.dkr"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  private_dns_enabled = true
+
+  tags = { Name = "${var.cluster_name}-vpce-ecr-dkr" }
+}
+
+# S3 Gateway Endpoint - FREE, required for ECR layer pulls (stored in S3)
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.${var.aws_region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = [aws_route_table.private.id]
+
+  tags = { Name = "${var.cluster_name}-vpce-s3" }
+}
+

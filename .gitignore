@@ -1,0 +1,35 @@
+# Terraform
+# ---------
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+*.tfvars.json
+.terraform.tfstate.lock.info
+.terraform.lock.hcl
+
+# Credentials & Secrets
+# ---------------------
+*.pem
+*.key
+kubeconfig*
+.env
+
+# OS Files
+# --------
+.DS_Store
+Thumbs.db
+
+# Project Temp Files
+# ------------------
+tmp/
+*.log
+brain/
+.gemini/
+
+# Node/Python (Common)
+# --------------------
+node_modules/
+__pycache__/
+venv/
+.venv/

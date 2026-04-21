@@ -1,10 +1,10 @@
-# Group F — Smart Waste Management System
-# S3 Bucket — Shared Artifact Storage
+# Group F - Smart Waste Management System
+# S3 Bucket - Shared Artifact Storage
 # Owner: F4 Platform Team
 #
 # Used by:
-#   F2 — Airflow DAGs, MLflow model artifacts, Spark checkpoints
-#   F4 — Terraform state (optional, see backend.tf)
+#   F2 - Airflow DAGs, MLflow model artifacts, Spark checkpoints
+#   F4 - Terraform state (optional, see backend.tf)
 #
 # NOTE: force_destroy = false intentionally prevents terraform destroy from
 # wiping ML model artifacts and DAGs. Empty the bucket manually before destroy:
@@ -20,7 +20,7 @@ resource "aws_s3_bucket" "swms_artifacts" {
 
   tags = {
     Name    = "swms-artifacts"
-    Purpose = "Airflow DAGs, MLflow artifacts, Spark checkpoints"
+    Purpose = "Artifact Storage"
   }
 }
 

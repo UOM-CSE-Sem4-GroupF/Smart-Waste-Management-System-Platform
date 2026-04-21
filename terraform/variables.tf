@@ -1,4 +1,4 @@
-# Group F — Smart Waste Management System
+# Group F - Smart Waste Management System
 # Input Variables
 # Owner: F4 Platform Team
 
