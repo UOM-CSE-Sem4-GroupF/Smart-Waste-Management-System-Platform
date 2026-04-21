@@ -38,16 +38,16 @@ data:
     echo "======================================================"
 
     # ── Wait for Vault to be ready ────────────────────────────
-    # Use curl on the HTTP health endpoint — vault status CLI returns exit 2
-    # even when unsealed (dev mode quirk), which would abort with set -e.
+    # Use wget — the hashicorp/vault image has wget but not curl.
+    # vault status CLI returns exit 2 in dev mode which would abort with set -e.
     echo "[1/6] Waiting for Vault to be ready..."
-    until curl -sf "$VAULT_ADDR/v1/sys/health?standbyok=true" > /dev/null 2>&1; do
+    until wget -qO- "$VAULT_ADDR/v1/sys/health?standbyok=true" > /dev/null 2>&1; do
       echo "  Vault not ready yet, retrying in 3s..."
       sleep 3
     done
     echo "  ✅ Vault is ready and unsealed."
 
-    # Enable set -e AFTER the wait loop to avoid premature exit on curl non-zero
+    # Enable set -e AFTER the wait loop to avoid premature exit on non-zero
     set -e
 
     # ── Enable KV v2 secrets engine ──────────────────────────

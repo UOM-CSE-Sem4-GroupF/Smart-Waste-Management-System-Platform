@@ -134,6 +134,7 @@ if helm status kafka -n messaging &>/dev/null; then
 else
   log_info "Installing Kafka (OCI chart from Bitnami registry)..."
   helm install kafka oci://registry-1.docker.io/bitnamicharts/kafka \
+    --version "$KAFKA_CHART_VERSION" \
     --namespace messaging \
     --values ./messaging/kafka/values-dev.yaml \
     --wait \

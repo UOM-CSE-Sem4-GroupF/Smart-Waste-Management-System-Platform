@@ -22,36 +22,37 @@
 #   4. Delete the local key files.
 
 config:
-  # Argo CD server connection (in-cluster)
-  argocd:
-    serverAddress: "https://argocd-server.cicd.svc"
-    insecure: true
-    plaintext: false
+  # Flat config keys — v1.1.x chart serializes nested objects as Go map strings
+  # which breaks the binary. Use the exact ConfigMap key names the binary expects.
+
+  # Argo CD server connection (in-cluster, plaintext HTTP port 80 for dev)
+  argocd.server-addr: "argocd-server.cicd.svc:80"
+  argocd.insecure: "true"
+  argocd.plaintext: "true"
+  argocd.grpc-web: "true"
 
   # Git write-back — commit updated image tags back to this repo
-  gitCommit:
-    user: "image-updater"
-    email: "image-updater@group-f.local"
-    # Commit message template (available vars: .AppName, .Name, .ImageURL, .NewTag)
-    message: "chore(image-updater): update {{.AppName}} {{.Name}} → {{.NewTag}}"
-    signingKey: ""
+  git.user: "image-updater"
+  git.email: "image-updater@group-f.local"
+  git.commit-message-template: "chore(image-updater): update {{.AppName}} {{.Name}} → {{.NewTag}}"
+
+  log.level: "info"
 
   # GHCR registry — all group-f service images live here
-  registries:
-    - name: ghcr
-      prefix: ghcr.io
-      insecure: false
-      # Credentials from a pull secret pre-created in cicd namespace:
-      #   kubectl -n cicd create secret docker-registry ghcr-pull-secret \
-      #     --docker-server=ghcr.io \
-      #     --docker-username=<gh-user> \
-      #     --docker-password=<github-pat-with-read-packages>
-      credentials: pullsecret:cicd/ghcr-pull-secret
+  # Credentials from a pull secret pre-created in cicd namespace:
+  #   kubectl -n cicd create secret docker-registry ghcr-pull-secret \
+  #     --docker-server=ghcr.io \
+  #     --docker-username=<gh-user> \
+  #     --docker-password=<github-pat-with-read-packages>
+  registries.conf: |
+    registries:
+      - name: ghcr
+        prefix: ghcr.io
+        insecure: false
+        credentials: pullsecret:cicd/ghcr-pull-secret
 
 # Scan interval — check GHCR every 2 minutes for new tags
-extraArgs:
-  - --interval=2m
-  - --loglevel=info
+extraArgs: []
 
 resources:
   requests:
