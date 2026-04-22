@@ -27,9 +27,9 @@ variable "eks_node_instance_types" {
 }
 
 variable "eks_node_desired_size" {
-  description = "Desired number of EKS worker nodes. 2 nodes (2x t3.medium = 8 vCPU / 16 GB) fits Kafka + Keycloak + EMQX + Kong + Vault."
+  description = "Desired number of EKS worker nodes. Increased to 3 to ensure coverage across all 3 Availability Zones (1a, 1b, 1c) and resolve Volume Affinity conflicts."
   type        = number
-  default     = 2
+  default     = 3
 }
 
 variable "eks_node_min_size" {

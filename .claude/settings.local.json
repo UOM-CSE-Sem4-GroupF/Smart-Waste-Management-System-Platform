@@ -7,7 +7,8 @@
       "Bash(helm upgrade *)",
       "Bash(python verify_external_kafka.py)",
       "PowerShell(Stop-Process *)",
-      "Bash(python -u kafka_consumer.py)"
+      "Bash(python -u kafka_consumer.py)",
+      "Bash(kubectl get *)"
     ]
   }
 }
