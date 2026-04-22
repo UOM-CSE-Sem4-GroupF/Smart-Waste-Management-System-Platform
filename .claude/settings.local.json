@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(kubectl logs *)",
+      "Bash(kubectl get pod *)",
+      "Bash(helm show *)",
+      "Bash(helm upgrade *)",
+      "Bash(python verify_external_kafka.py)",
+      "PowerShell(Stop-Process *)",
+      "Bash(python -u kafka_consumer.py)"
+    ]
+  }
+}
