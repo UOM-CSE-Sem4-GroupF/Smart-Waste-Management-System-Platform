@@ -70,6 +70,7 @@ def on_message(client, userdata, msg):
         
         logger.info(f"⚡ Bridging {topic} -> Kafka:{kafka_topic}")
         producer.send(kafka_topic, key=client_id, value=wrapped_msg)
+        producer.flush()  # Ensure message is sent immediately
         
     except Exception as e:
         logger.error(f"Failed to bridge message: {e}")

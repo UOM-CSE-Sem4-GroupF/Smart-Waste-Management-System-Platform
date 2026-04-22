@@ -101,7 +101,7 @@ resource "helm_release" "kafka" {
     name  = "auth.sasl.jaas.clientPasswords[0]"
     value = var.kafka_sasl_password
   }
-
+  # which constructs the correct advertised.listeners with the public hostname.
   depends_on = [
     kubernetes_storage_class.gp3,
     kubernetes_namespace.swms,

@@ -42,8 +42,6 @@ persistence:
   enabled: true
   size: 2Gi
 
-# Log retention per topic will be configured via topics.yaml
-# Global defaults
 extraConfig: |-
   auto.create.topics.enable=false
   default.replication.factor=1
@@ -54,11 +52,30 @@ extraConfig: |-
 zookeeper:
   enabled: false
 
-# Expose an internal service for other pods to connect
-externalAccess:
-  enabled: false
-
 # Readiness probe settings
 readinessProbe:
   initialDelaySeconds: 30
   periodSeconds: 10
+
+# Enable professional external access via LoadBalancer (Brokers only)
+externalAccess:
+  enabled: true
+  autoDiscovery:
+    enabled: false
+  broker:
+    service:
+      type: LoadBalancer
+      port: 9094
+      annotations:
+        service.beta.kubernetes.io/aws-load-balancer-type: nlb
+        service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+    # ── THE FINAL FIX: Hardcoded validated DNS ──────────────────────────────────
+    externalIPs:
+      - "a2124eca3295942ebbecfa3ea783693d-fc2f125c6004ef47.elb.eu-north-1.amazonaws.com"
+  controller:
+    service:
+      type: ClusterIP
+      domain: controller.internal
+
+rbac:
+  create: true

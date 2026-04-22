@@ -189,85 +189,11 @@ resource "aws_route_table_association" "private" {
   route_table_id = aws_route_table.private.id
 }
 
-# -- VPC Endpoints -------------------------------------------------------------
-# Worker nodes in private subnets need to call AWS APIs (EC2, STS, ECR) for:
-#   - EKS bootstrap: aws ec2 describe-instances (to get PrivateDnsName)
-#   - IAM/IRSA: STS AssumeRoleWithWebIdentity
-#   - kubelet: ECR image pulls (via S3 gateway endpoint, ECR interface endpoints)
-#
-# Interface endpoints eliminate NAT dependency for these calls.
-# Cost: ~$0.01/hr per endpoint per AZ (cheaper than repeated NAT failures).
+# -- VPC Endpoints (Cost Optimization) -----------------------------------------
+# Gateway endpoints are FREE. Interface endpoints cost ~$0.01/hr per AZ.
+# For this dev project, we use the NAT Gateway for ECR/EC2/STS access to save ~$65/mo.
 
-resource "aws_security_group" "vpc_endpoints" {
-  name        = "${var.cluster_name}-vpce-sg"
-  description = "Allow HTTPS from within the VPC to VPC Interface Endpoints"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["10.0.0.0/16"]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = { Name = "${var.cluster_name}-vpce-sg" }
-}
-
-# EC2 API - required by EKS bootstrap to call describe-instances
-resource "aws_vpc_endpoint" "ec2" {
-  vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.${var.aws_region}.ec2"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = aws_subnet.private[*].id
-  security_group_ids  = [aws_security_group.vpc_endpoints.id]
-  private_dns_enabled = true
-
-  tags = { Name = "${var.cluster_name}-vpce-ec2" }
-}
-
-# STS - required for IAM Roles for Service Accounts (IRSA) and node registration
-resource "aws_vpc_endpoint" "sts" {
-  vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.${var.aws_region}.sts"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = aws_subnet.private[*].id
-  security_group_ids  = [aws_security_group.vpc_endpoints.id]
-  private_dns_enabled = true
-
-  tags = { Name = "${var.cluster_name}-vpce-sts" }
-}
-
-# ECR API + DKR - required for kubelet to pull container images
-resource "aws_vpc_endpoint" "ecr_api" {
-  vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.${var.aws_region}.ecr.api"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = aws_subnet.private[*].id
-  security_group_ids  = [aws_security_group.vpc_endpoints.id]
-  private_dns_enabled = true
-
-  tags = { Name = "${var.cluster_name}-vpce-ecr-api" }
-}
-
-resource "aws_vpc_endpoint" "ecr_dkr" {
-  vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.${var.aws_region}.ecr.dkr"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = aws_subnet.private[*].id
-  security_group_ids  = [aws_security_group.vpc_endpoints.id]
-  private_dns_enabled = true
-
-  tags = { Name = "${var.cluster_name}-vpce-ecr-dkr" }
-}
-
-# S3 Gateway Endpoint - FREE, required for ECR layer pulls (stored in S3)
+# S3 Gateway Endpoint - REQUIRED for ECR layer pulls and FREE.
 resource "aws_vpc_endpoint" "s3" {
   vpc_id            = aws_vpc.main.id
   service_name      = "com.amazonaws.${var.aws_region}.s3"
