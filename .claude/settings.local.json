@@ -11,7 +11,24 @@
       "Bash(kubectl get *)",
       "Bash(terraform version *)",
       "Bash(kubectl version *)",
-      "Bash(helm version *)"
+      "Bash(helm version *)",
+      "Bash(doctl kubernetes *)",
+      "Bash(kubectl.exe get *)",
+      "Bash(helm.exe install *)",
+      "Bash(kubectl.exe apply *)",
+      "Bash(kubectl.exe describe *)",
+      "Bash(helm.exe uninstall *)",
+      "Bash(kubectl.exe delete *)",
+      "Bash(kubectl.exe logs *)",
+      "Bash(kubectl.exe exec *)",
+      "Bash(kubectl.exe wait *)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(d.get\\('state', d\\)\\)\")",
+      "Bash(doctl compute *)",
+      "Bash(helm.exe upgrade *)",
+      "Read(//e/Porjects/sem 4/Software-Engineering/Smart-Wast-Management-System/Smart-Waste-Management-System-Application/**)",
+      "Bash(timeout 20 python kafka_consumer.py)",
+      "Bash(kubectl exec *)",
+      "Bash(timeout 35 python kafka_consumer.py)"
     ]
   }
 }

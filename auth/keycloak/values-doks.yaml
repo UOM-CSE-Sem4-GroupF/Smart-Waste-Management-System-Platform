@@ -10,10 +10,6 @@
 #   2. Service: ClusterIP (not exposed publicly; accessed via Kong in production)
 #   3. PostgreSQL storage: uses DOKS do-block-storage instead of AWS gp3
 
-image:
-  registry: docker.io
-  repository: bitnami/keycloak
-
 # Keep Keycloak cluster-internal — expose via Kong route or kubectl port-forward
 service:
   type: ClusterIP
@@ -21,9 +17,6 @@ service:
     http: 80
 
 postgresql:
-  image:
-    registry: docker.io
-    repository: bitnami/postgresql
   primary:
     persistence:
       storageClass: do-block-storage

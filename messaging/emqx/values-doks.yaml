@@ -13,9 +13,25 @@ service:
   type: LoadBalancer
   annotations:
     service.beta.kubernetes.io/do-loadbalancer-name: "swms-emqx-mqtt"
-    # Expose only the MQTT port (1883) on the public LB — dashboard stays internal
-    service.beta.kubernetes.io/do-loadbalancer-allow-rules: "port:1883,protocol:tcp"
 
 persistence:
   storageClass: do-block-storage
   size: 1Gi
+
+# EMQX 5.x Erlang VM peak startup usage exceeds 1Gi — needs 2Gi headroom.
+resources:
+  requests:
+    cpu: 100m
+    memory: 512Mi
+  limits:
+    cpu: 500m
+    memory: 2Gi
+
+# Force EMQX onto the node that does NOT run kafka-broker (node 1 has ~2.5GB free).
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchLabels:
+            app.kubernetes.io/component: broker
+        topologyKey: kubernetes.io/hostname

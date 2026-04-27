@@ -4,28 +4,31 @@
 #     -n messaging \
 #     -f ./messaging/kafka/values-dev.yaml \
 #     -f ./messaging/kafka/values-doks.yaml
-#
-# Key changes:
-#   1. Image registry: public.ecr.aws → docker.io
-#   2. Storage: use DOKS do-block-storage StorageClass
-#   3. externalAccess: disabled — F1 edge devices connect via EMQX MQTT (not Kafka directly).
-#      EMQX bridges MQTT → Kafka internally over cluster DNS.
-#      This removes the need for a third LoadBalancer and avoids pre-configuring
-#      an advertised listener hostname (which was AWS NLB-specific in values-dev.yaml).
-
-image:
-  registry: docker.io
-  repository: bitnami/kafka
 
 persistence:
   storageClass: do-block-storage
   size: 2Gi
 
-# Disable external Kafka access on DOKS — EMQX handles the MQTT→Kafka bridge
-# internally. If direct Kafka access is needed later, re-enable and configure
-# a DO LoadBalancer with a static reserved IP to pre-seed advertised listeners.
+# External Kafka access via a DO reserved IP (139.59.219.132).
+# loadBalancerIPs seeds KAFKA_CFG_ADVERTISED_LISTENERS with the reserved IP
+# before the LoadBalancer service is created — same pattern as AWS loadBalancerNames.
+# The reserved IP must be created first: doctl compute reserved-ip create --region sgp1
 externalAccess:
-  enabled: false
+  enabled: true
+  autoDiscovery:
+    enabled: false
   broker:
+    service:
+      type: LoadBalancer
+      ports:
+        external: 9094
+      # The DO Load Balancer IP (163.47.8.3) is stable for the lifetime of the LB.
+      # Clear the AWS loadBalancerNames from values-dev.yaml (chart prefers names over IPs).
+      loadBalancerNames: []
+      loadBalancerIPs:
+        - "163.47.8.3"
+      annotations:
+        service.beta.kubernetes.io/do-loadbalancer-name: "swms-kafka-external"
+  controller:
     service:
       type: ClusterIP

@@ -1,12 +1,12 @@
 # Terraform
 # ---------
-.terraform/
+**/.terraform/
+**/.terraform.lock.hcl
 *.tfstate
 *.tfstate.backup
 *.tfvars
 *.tfvars.json
 .terraform.tfstate.lock.info
-.terraform.lock.hcl
 
 # Credentials & Secrets
 # ---------------------

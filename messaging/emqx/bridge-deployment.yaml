@@ -32,7 +32,10 @@ spec:
             - name: KAFKA_USER
               value: "user1"
             - name: KAFKA_PASS
-              value: "Ajkv0XR2Io"
+              valueFrom:
+                secretKeyRef:
+                  name: kafka-user-passwords
+                  key: client-passwords
             - name: MQTT_USER
               value: "f1-admin"
             - name: MQTT_PASS
