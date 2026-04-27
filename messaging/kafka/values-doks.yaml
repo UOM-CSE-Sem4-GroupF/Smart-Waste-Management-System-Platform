@@ -1,0 +1,31 @@
+# Kafka — Helm Value Overrides for DOKS
+# Layered on top of values-dev.yaml:
+#   helm upgrade --install kafka oci://registry-1.docker.io/bitnamicharts/kafka \
+#     -n messaging \
+#     -f ./messaging/kafka/values-dev.yaml \
+#     -f ./messaging/kafka/values-doks.yaml
+#
+# Key changes:
+#   1. Image registry: public.ecr.aws → docker.io
+#   2. Storage: use DOKS do-block-storage StorageClass
+#   3. externalAccess: disabled — F1 edge devices connect via EMQX MQTT (not Kafka directly).
+#      EMQX bridges MQTT → Kafka internally over cluster DNS.
+#      This removes the need for a third LoadBalancer and avoids pre-configuring
+#      an advertised listener hostname (which was AWS NLB-specific in values-dev.yaml).
+
+image:
+  registry: docker.io
+  repository: bitnami/kafka
+
+persistence:
+  storageClass: do-block-storage
+  size: 2Gi
+
+# Disable external Kafka access on DOKS — EMQX handles the MQTT→Kafka bridge
+# internally. If direct Kafka access is needed later, re-enable and configure
+# a DO LoadBalancer with a static reserved IP to pre-seed advertised listeners.
+externalAccess:
+  enabled: false
+  broker:
+    service:
+      type: ClusterIP
