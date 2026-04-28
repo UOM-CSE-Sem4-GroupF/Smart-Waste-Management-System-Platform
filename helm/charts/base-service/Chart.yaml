@@ -1,0 +1,6 @@
+apiVersion: v2
+name: base-service
+description: Base Helm chart template for SWMS services (copy for each service)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
