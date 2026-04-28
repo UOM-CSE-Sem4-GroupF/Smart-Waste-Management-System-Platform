@@ -17,6 +17,16 @@ output "kubernetes_version" {
   description = "Actual Kubernetes version provisioned."
 }
 
+output "node_pool_size" {
+  value       = var.node_size
+  description = "DigitalOcean Droplet size used for each worker node."
+}
+
+output "node_count" {
+  value       = var.node_count
+  description = "Number of worker nodes provisioned in the DOKS cluster."
+}
+
 output "kubeconfig_command" {
   value       = "doctl kubernetes cluster kubeconfig save ${digitalocean_kubernetes_cluster.swms.name}"
   description = "Run this after terraform apply to configure kubectl."
