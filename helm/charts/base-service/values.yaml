@@ -18,6 +18,7 @@ resources:
     memory: 512Mi
 
 livenessProbe:
+  enabled: true
   httpGet:
     path: /health
     port: 3000
@@ -25,6 +26,7 @@ livenessProbe:
   periodSeconds: 10
 
 readinessProbe:
+  enabled: true
   httpGet:
     path: /ready
     port: 3000
