@@ -14,6 +14,7 @@
 *.key
 kubeconfig*
 .env
+*.properties
 
 # OS Files
 # --------

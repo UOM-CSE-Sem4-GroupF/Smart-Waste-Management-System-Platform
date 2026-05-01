@@ -184,30 +184,8 @@ else
   log_success "Kong deployed."
 fi
 
-# --- Step 8: Deploy Keycloak ---
-log_step "Step 8: Deploying Keycloak (auth namespace)"
-
-# Create the realm ConfigMap from realm-export.json
-log_info "Creating Keycloak realm ConfigMap..."
-kubectl create configmap keycloak-realm-config \
-  --from-file=waste-management-realm.json=./auth/keycloak/realm-export.json \
-  -n auth \
-  --dry-run=client -o yaml | kubectl apply -f -
-
-if helm status keycloak -n auth &>/dev/null; then
-  log_warn "Keycloak already deployed — skipping install."
-else
-  log_info "Installing Keycloak (OCI chart from Bitnami registry)..."
-  helm install keycloak oci://registry-1.docker.io/bitnamicharts/keycloak \
-    --namespace auth \
-    --values ./auth/keycloak/values-dev.yaml \
-    --wait \
-    --timeout 10m
-  log_success "Keycloak deployed."
-fi
-
-# --- Step 9: Deploy HashiCorp Vault ---
-log_step "Step 9: Deploying HashiCorp Vault (auth namespace)"
+# --- Step 8: Deploy HashiCorp Vault ---
+log_step "Step 8: Deploying HashiCorp Vault (auth namespace)"
 
 # Add the hashicorp Helm repo (idempotent)
 if ! helm repo list 2>/dev/null | grep -q "hashicorp"; then
@@ -239,6 +217,58 @@ kubectl wait --for=condition=complete job/vault-bootstrap -n auth --timeout=120s
   && log_success "Vault bootstrap complete. All secrets seeded." \
   || log_warn "Bootstrap job still running. Check: kubectl logs -n auth -l job-name=vault-bootstrap"
 
+# --- Step 8b: Deploy External Secrets Operator ---
+log_step "Step 8b: Deploying External Secrets Operator (eso namespace)"
+
+if ! helm repo list 2>/dev/null | grep -q "external-secrets"; then
+  log_info "Adding External Secrets Helm repo..."
+  helm repo add external-secrets https://charts.external-secrets.io
+  helm repo update
+else
+  log_info "External Secrets Helm repo already added."
+fi
+
+if helm status external-secrets -n eso &>/dev/null; then
+  log_warn "External Secrets Operator already deployed — skipping install."
+else
+  log_info "Installing External Secrets Operator..."
+  kubectl create namespace eso --dry-run=client -o yaml | kubectl apply -f -
+  helm install external-secrets external-secrets/external-secrets \
+    --namespace eso \
+    --set installCRDs=true \
+    --wait \
+    --timeout 5m
+  log_success "External Secrets Operator deployed."
+fi
+
+log_info "Applying Vault ClusterSecretStore..."
+kubectl apply -f ./infrastructure/eso/cluster-secret-store.yaml
+
+# --- Step 9: Deploy Keycloak ---
+log_step "Step 9: Deploying Keycloak (auth namespace)"
+
+# Create the realm ConfigMap from realm-export.json
+log_info "Creating Keycloak realm ConfigMap..."
+kubectl create configmap keycloak-realm-config \
+  --from-file=waste-management-realm.json=./auth/keycloak/realm-export.json \
+  -n auth \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+log_info "Applying Keycloak ExternalSecret..."
+kubectl apply -f ./auth/keycloak/external-secret.yaml
+
+if helm status keycloak -n auth &>/dev/null; then
+  log_warn "Keycloak already deployed — skipping install."
+else
+  log_info "Installing Keycloak (OCI chart from Bitnami registry)..."
+  helm install keycloak oci://registry-1.docker.io/bitnamicharts/keycloak \
+    --namespace auth \
+    --values ./auth/keycloak/values-dev.yaml \
+    --wait \
+    --timeout 10m
+  log_success "Keycloak deployed."
+fi
+
 # --- Step 10: Deploy EMQX MQTT Broker ---
 log_step "Step 10: Deploying EMQX MQTT Broker (messaging namespace)"
 
@@ -250,6 +280,9 @@ if ! helm repo list 2>/dev/null | grep -q "emqx"; then
 else
   log_info "EMQX Helm repo already added."
 fi
+
+log_info "Applying EMQX ExternalSecret..."
+kubectl apply -f ./messaging/emqx/external-secret.yaml
 
 if helm status emqx -n messaging &>/dev/null; then
   log_warn "EMQX already deployed — skipping install."
@@ -365,17 +398,17 @@ echo "  Argo CD:        http://localhost:30800  (NodePort)"
 echo ""
 echo "  Keycloak Admin:"
 echo "    URL:      http://localhost:30180/admin"
-echo "    User:     admin / swms-admin-dev-2026"
+echo "    User:     admin / (Check Vault secret/swms/keycloak)"
 echo ""
 echo "  Vault:"
 echo "    UI:       http://localhost:30820"
-echo "    Token:    swms-vault-dev-root-token"
+echo "    Token:    (Check your initial root token)"
 echo ""
 echo "  EMQX MQTT Credentials (for F1 team):"
-echo "    sensor-device / swms-sensor-dev-2026  (ESP32 devices)"
-echo "    edge-gateway  / swms-edge-dev-2026    (Node-RED RPi gateway)"
-echo "    f1-admin      / swms-f1-admin-2026    (testing)"
-echo "    Dashboard:    admin / swms-emqx-dev-2026"
+echo "    sensor-device (ESP32 devices)"
+echo "    edge-gateway  (Node-RED RPi gateway)"
+echo "    f1-admin      (testing)"
+echo "    Dashboard:    admin / (Check Vault secret/swms/emqx)"
 echo ""
 echo "  Kafka Bridge Rules:"
 echo "    sensors/#  → waste.bin.telemetry"

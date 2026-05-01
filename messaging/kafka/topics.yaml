@@ -33,6 +33,11 @@ spec:
           # Use the same public.ecr.aws image as the broker
           image: public.ecr.aws/bitnami/kafka:4.0.0-debian-12-r10
           env:
+            - name: KAFKA_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: kafka-user-passwords
+                  key: client-username
             - name: KAFKA_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -134,6 +139,11 @@ spec:
         - name: write-client-config
           image: public.ecr.aws/bitnami/kafka:4.0.0-debian-12-r10
           env:
+            - name: KAFKA_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: kafka-user-passwords
+                  key: client-username
             - name: KAFKA_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -147,7 +157,7 @@ spec:
               cat > /tmp/client.properties <<EOF
               security.protocol=SASL_PLAINTEXT
               sasl.mechanism=SCRAM-SHA-256
-              sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required username="user1" password="${KAFKA_PASSWORD}";
+              sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required username="${KAFKA_USERNAME}" password="${KAFKA_PASSWORD}";
               EOF
               echo "Waiting for Kafka to accept connections..."
               until kafka-topics.sh \
