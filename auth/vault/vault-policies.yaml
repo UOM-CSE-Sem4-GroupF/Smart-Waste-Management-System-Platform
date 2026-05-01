@@ -80,10 +80,22 @@ data:
       keycloak_db_password="swms-kc-dev-2026" \
       postgres_password="swms-pg-dev-2026" \
       keycloak_db_url="jdbc:postgresql://keycloak-postgresql.auth.svc.cluster.local:5432/bitnami_keycloak"
-    echo "  ✅ PostgreSQL secrets stored."
+    echo "  ✅ PostgreSQL auth secrets stored."
+
+    # ── Seed PostgreSQL Waste DB secrets ──────────────────────
+    echo "[3d/6] Seeding secrets at secret/swms/postgres-waste..."
+    vault kv put secret/swms/postgres-waste \
+      password="waste_admin_password"
+    echo "  ✅ PostgreSQL Waste DB secrets stored."
+
+    # ── Seed InfluxDB secrets ─────────────────────────────────
+    echo "[3e/6] Seeding secrets at secret/swms/influxdb..."
+    vault kv put secret/swms/influxdb \
+      token="my-super-token"
+    echo "  ✅ InfluxDB secrets stored."
 
     # ── Seed EMQX secrets ─────────────────────────────────────
-    echo "[3d/6] Seeding secrets at secret/swms/emqx..."
+    echo "[3f/6] Seeding secrets at secret/swms/emqx..."
     vault kv put secret/swms/emqx \
       dashboard_username="admin" \
       dashboard_password="swms-emqx-dev-2026" \
