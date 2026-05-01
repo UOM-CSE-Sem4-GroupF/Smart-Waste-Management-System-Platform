@@ -16,7 +16,7 @@ image:
 # ─── Admin Credentials ───────────────────────────────────────
 auth:
   adminUser: admin
-  adminPassword: "swms-admin-dev-2026"
+  existingSecret: "keycloak-credentials"
 
 # ─── Realm Import ────────────────────────────────────────────
 # Import the waste-management realm automatically on first startup
@@ -43,8 +43,7 @@ postgresql:
     registry: public.ecr.aws
     repository: bitnami/postgresql
   auth:
-    postgresPassword: "swms-pg-dev-2026"
-    password: "swms-kc-dev-2026"
+    existingSecret: "keycloak-credentials"
   primary:
     persistence:
       size: 1Gi

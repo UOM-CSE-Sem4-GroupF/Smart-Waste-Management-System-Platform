@@ -85,3 +85,9 @@ externalAccess:
 
 rbac:
   create: true
+
+sasl:
+  client:
+    users:
+      - user1
+  existingSecret: "kafka-user-passwords"
