@@ -1,0 +1,27 @@
+# Group F — Smart Waste Management System
+# Dependabot configuration
+# Owner: F4 Platform Team
+#
+# Dependabot opens PRs automatically to keep GitHub Actions and
+# Helm chart versions up to date. PRs target main and are reviewed
+# by F4 (enforced by CODEOWNERS) before merge.
+
+version: 2
+
+updates:
+  # ── GitHub Actions ────────────────────────────────────────────────────────
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Colombo"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "chore(deps)"
+    reviewers:
+      - "UOM-CSE-Sem4-GroupF/f4-platform"
+    open-pull-requests-limit: 5

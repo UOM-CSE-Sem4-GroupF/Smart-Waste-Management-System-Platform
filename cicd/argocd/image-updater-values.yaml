@@ -1,0 +1,75 @@
+# Group F — Smart Waste Management System
+# Argo CD Image Updater — Helm Values (Local Dev)
+# Chart: argo/argocd-image-updater
+# Deployed into: cicd namespace
+#
+# Usage: helm upgrade --install argocd-image-updater argo/argocd-image-updater \
+#          -n cicd -f cicd/argocd/image-updater-values.yaml
+#
+# Role: Polls GHCR for new image tags on service containers, then commits
+# updated image.tag values back to this repo. Argo CD detects the commit
+# and auto-syncs the affected Application — completing the GitOps loop
+# without any cross-repo PAT in GitHub Actions.
+#
+# PREREQUISITE — create the SSH deploy key secret before installing:
+#   1. Generate a key pair:
+#        ssh-keygen -t ed25519 -C "image-updater@group-f.local" -f image-updater-key
+#   2. Add image-updater-key.pub as a Deploy Key with WRITE access to this repo:
+#        GitHub → group-f-platform → Settings → Deploy keys → Add deploy key
+#   3. Store the private key in Kubernetes:
+#        kubectl -n cicd create secret generic argocd-image-updater-ssh \
+#          --from-file=sshPrivateKey=image-updater-key
+#   4. Delete the local key files.
+
+config:
+  # Flat config keys — v1.1.x chart serializes nested objects as Go map strings
+  # which breaks the binary. Use the exact ConfigMap key names the binary expects.
+
+  # Argo CD server connection (in-cluster, plaintext HTTP port 80 for dev)
+  argocd.server-addr: "argocd-server.cicd.svc:80"
+  argocd.insecure: "true"
+  argocd.plaintext: "true"
+  argocd.grpc-web: "true"
+
+  # Git write-back — commit updated image tags back to this repo
+  git.user: "image-updater"
+  git.email: "image-updater@group-f.local"
+  git.commit-message-template: "chore(image-updater): update {{.AppName}} {{.Name}} → {{.NewTag}}"
+
+  log.level: "info"
+
+  # GHCR registry — all group-f service images live here
+  # Credentials from a pull secret pre-created in cicd namespace:
+  #   kubectl -n cicd create secret docker-registry ghcr-pull-secret \
+  #     --docker-server=ghcr.io \
+  #     --docker-username=<gh-user> \
+  #     --docker-password=<github-pat-with-read-packages>
+  registries.conf: |
+    registries:
+      - name: ghcr
+        prefix: ghcr.io
+        insecure: false
+        credentials: pullsecret:cicd/ghcr-pull-secret
+
+# Scan interval — check GHCR every 2 minutes for new tags
+extraArgs: []
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+# Mount the SSH deploy key secret so Image Updater can write to git
+volumes:
+  - name: ssh-key
+    secret:
+      secretName: argocd-image-updater-ssh
+      defaultMode: 0600
+
+volumeMounts:
+  - name: ssh-key
+    mountPath: /home/argocd-image-updater/.ssh
+    readOnly: true

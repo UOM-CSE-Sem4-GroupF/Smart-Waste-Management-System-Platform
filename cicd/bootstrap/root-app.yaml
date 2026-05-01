@@ -1,0 +1,49 @@
+# Group F — Smart Waste Management System
+# Argo CD App-of-Apps Root Application
+# Owner: F4 Platform Team
+#
+# This is the bootstrap Application that manages all other platform Applications.
+# Once applied, Argo CD self-manages the contents of cicd/applications/ directory.
+#
+# Bootstrap (run ONCE after Argo CD is installed):
+#   kubectl apply -n cicd -f cicd/bootstrap/root-app.yaml
+#
+# After that, all changes to cicd/applications/*.yaml are auto-deployed by Argo CD.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: cicd
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+  annotations:
+    # Sync wave -1 ensures this deploys before all child Applications
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    # Cascade delete — removing root-app also removes all child Applications
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+
+  source:
+    repoURL: https://github.com/UOM-CSE-Sem4-GroupF/group-f-platform
+    targetRevision: main
+    path: cicd/applications
+    directory:
+      recurse: true
+      # Only pick up Application manifests, not README or other files
+      include: "*.yaml"
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cicd
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true

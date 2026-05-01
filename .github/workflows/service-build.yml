@@ -1,0 +1,307 @@
+# Group F — Smart Waste Management System
+# Reusable Service Build Workflow
+# Owner: F4 Platform Team
+#
+# Called by ALL F1/F2/F3 service repositories. Do not copy this workflow —
+# call it from your repo's .github/workflows/build.yml like this:
+#
+#   jobs:
+#     build:
+#       uses: UOM-CSE-Sem4-GroupF/group-f-platform/.github/workflows/service-build.yml@main
+#       with:
+#         service-name: f3-orchestrator
+#         language: node
+#       secrets: inherit
+#
+# What this does:
+#   1. Run unit tests (Node 20 or Python 3.11)
+#   2. Lint Dockerfile with hadolint
+#   3. Build Docker image with Buildx (multi-platform ready)
+#   4. Scan image with Trivy — fails on CRITICAL/HIGH CVEs
+#   5. Push to ghcr.io/uom-cse-sem4-groupf/<service-name> with SHA + branch tags
+#   6. Generate and attach SBOM attestation (on main branch only)
+#   7. Optionally sign image with cosign (keyless OIDC)
+#
+# After push, Argo CD Image Updater detects the new tag and commits an
+# image.tag update to group-f-platform, completing the GitOps loop.
+
+name: Service Build (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      service-name:
+        description: >
+          Image name (lowercase, hyphens). Used as ghcr.io/uom-cse-sem4-groupf/<service-name>.
+          Examples: f3-orchestrator, f2-flink-processor, f1-edge-gateway
+        required: true
+        type: string
+
+      language:
+        description: Runtime — 'node' (Node.js 20) or 'python' (Python 3.11)
+        required: true
+        type: string
+
+      dockerfile-path:
+        description: Path to Dockerfile relative to context (default: Dockerfile)
+        required: false
+        default: Dockerfile
+        type: string
+
+      context:
+        description: Docker build context directory (default: .)
+        required: false
+        default: .
+        type: string
+
+      test-command:
+        description: >
+          Override the default test command.
+          Node default: npm test -- --coverage
+          Python default: pytest --cov --cov-report=xml
+        required: false
+        default: ""
+        type: string
+
+      platforms:
+        description: Docker build platforms (default: linux/amd64)
+        required: false
+        default: linux/amd64
+        type: string
+
+      severity-threshold:
+        description: >
+          Trivy severity levels that fail the build (comma-separated).
+          Default: CRITICAL,HIGH — matches CLAUDE.md security policy.
+        required: false
+        default: CRITICAL,HIGH
+        type: string
+
+      enable-signing:
+        description: >
+          Sign the image with cosign (keyless GitHub OIDC). Recommended for
+          production images. Requires id-token: write permission.
+        required: false
+        default: false
+        type: boolean
+
+    outputs:
+      image-ref:
+        description: Full image reference with digest (ghcr.io/…@sha256:…)
+        value: ${{ jobs.build-scan-push.outputs.image-ref }}
+      image-digest:
+        description: Image digest (sha256:…)
+        value: ${{ jobs.build-scan-push.outputs.image-digest }}
+      sha-tag:
+        description: The sha- prefixed image tag (e.g. sha-a1b2c3d)
+        value: ${{ jobs.build-scan-push.outputs.sha-tag }}
+
+# Permissions required by all jobs in this workflow.
+# Caller repos must pass these via `secrets: inherit` or grant explicitly.
+permissions:
+  contents: read      # Checkout code
+  packages: write     # Push to GHCR
+  id-token: write     # cosign OIDC + GitHub OIDC for Trivy
+  security-events: write  # Upload Trivy SARIF to GitHub Security tab
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 1: Run unit tests
+  # ────────────────────────────────────────────────────────────────────────────
+  test:
+    name: Test (${{ inputs.language }})
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Node.js path ──────────────────────────────────────────────────────
+      - name: Setup Node.js 20
+        if: inputs.language == 'node'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install Node dependencies
+        if: inputs.language == 'node'
+        run: npm ci
+
+      - name: Run Node tests
+        if: inputs.language == 'node'
+        run: ${{ inputs.test-command != '' && inputs.test-command || 'npm test -- --coverage' }}
+        env:
+          CI: true
+          NODE_ENV: test
+
+      # ── Python path ───────────────────────────────────────────────────────
+      - name: Setup Python 3.11
+        if: inputs.language == 'python'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Python dependencies
+        if: inputs.language == 'python'
+        run: pip install -r requirements.txt
+
+      - name: Run Python tests
+        if: inputs.language == 'python'
+        run: ${{ inputs.test-command != '' && inputs.test-command || 'pytest --cov --cov-report=xml -v' }}
+
+      # ── Coverage artifact ─────────────────────────────────────────────────
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ inputs.service-name }}-${{ github.run_id }}
+          path: |
+            coverage/
+            coverage.xml
+            .coverage
+          retention-days: 7
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 2: Build, scan, and push Docker image
+  # ────────────────────────────────────────────────────────────────────────────
+  build-scan-push:
+    name: Build → Scan → Push
+    runs-on: ubuntu-latest
+    needs: test
+    outputs:
+      image-ref: ${{ steps.build.outputs.imageid }}
+      image-digest: ${{ steps.build.outputs.digest }}
+      sha-tag: sha-${{ steps.vars.outputs.sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute short SHA
+        id: vars
+        run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      # ── Dockerfile linting ────────────────────────────────────────────────
+      - name: Lint Dockerfile (hadolint)
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: ${{ inputs.context }}/${{ inputs.dockerfile-path }}
+          # Fail on errors only — warnings are surfaced but do not block
+          failure-threshold: error
+          # Ignore DL3008: pin apt packages — acceptable in dev images
+          ignore: DL3008,DL3009
+
+      # ── Docker Buildx setup ───────────────────────────────────────────────
+      - name: Set up QEMU (multi-platform builds)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ── Image metadata ────────────────────────────────────────────────────
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/uom-cse-sem4-groupf/${{ inputs.service-name }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=ref,event=branch
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+          labels: |
+            org.opencontainers.image.title=${{ inputs.service-name }}
+            org.opencontainers.image.vendor=Group-F-SWMS
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      # ── GHCR login ────────────────────────────────────────────────────────
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Build and push ────────────────────────────────────────────────────
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.context }}/${{ inputs.dockerfile-path }}
+          platforms: ${{ inputs.platforms }}
+          # Push only on branch pushes (not on PRs — image not yet vetted)
+          push: ${{ github.event_name != 'pull_request' }}
+          # Load to local Docker daemon on PRs so Trivy can scan it
+          load: ${{ github.event_name == 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # GitHub Actions cache — cuts build time by ~60% on cache hits
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: false  # SBOM generated separately in job 3
+
+      # ── Trivy vulnerability scan ──────────────────────────────────────────
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: >-
+            ghcr.io/uom-cse-sem4-groupf/${{ inputs.service-name }}:sha-${{ steps.vars.outputs.sha }}
+          format: sarif
+          output: trivy-results.sarif
+          # Fail the build if unfixed vulnerabilities at or above severity threshold
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: ${{ inputs.severity-threshold }}
+          # Suppress informational output — only show what matters
+          quiet: false
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Trivy SARIF to GitHub Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-${{ inputs.service-name }}
+
+      # ── Cosign signing (optional) ─────────────────────────────────────────
+      - name: Install cosign
+        if: inputs.enable-signing && github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image (keyless OIDC)
+        if: inputs.enable-signing && github.event_name != 'pull_request'
+        run: |
+          cosign sign --yes \
+            ghcr.io/uom-cse-sem4-groupf/${{ inputs.service-name }}@${{ steps.build.outputs.digest }}
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 3: Generate and attach SBOM (Software Bill of Materials)
+  # Runs only on main branch pushes — not on PRs
+  # ────────────────────────────────────────────────────────────────────────────
+  sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    needs: build-scan-push
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate SBOM and attach attestation
+        uses: anchore/sbom-action@v0
+        with:
+          image: >-
+            ghcr.io/uom-cse-sem4-groupf/${{ inputs.service-name }}@${{ needs.build-scan-push.outputs.image-digest }}
+          format: spdx-json
+          artifact-name: sbom-${{ inputs.service-name }}.spdx.json
+          output-file: sbom.spdx.json
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ secrets.GITHUB_TOKEN }}
