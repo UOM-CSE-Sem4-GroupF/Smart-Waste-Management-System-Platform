@@ -42,8 +42,6 @@ persistence:
   enabled: true
   size: 2Gi
 
-# Log retention per topic will be configured via topics.yaml
-# Global defaults
 extraConfig: |-
   auto.create.topics.enable=false
   default.replication.factor=1
@@ -54,11 +52,36 @@ extraConfig: |-
 zookeeper:
   enabled: false
 
-# Expose an internal service for other pods to connect
-externalAccess:
-  enabled: false
-
 # Readiness probe settings
 readinessProbe:
   initialDelaySeconds: 30
   periodSeconds: 10
+
+# Enable external access via internet-facing NLB (Brokers only).
+# loadBalancerNames is the correct 32.x field for DNS-based LB hostnames —
+# it maps to EXTERNAL_ACCESS_HOSTS_LIST which prepare-config writes into
+# KAFKA_CFG_ADVERTISED_LISTENERS as EXTERNAL://<hostname>:9094.
+# externalIPs (at broker level, not service level) and autoDiscovery both
+# failed: externalIPs is ignored by prepare-config, and autoDiscovery requires
+# a kubectl init container image that this chart version doesn't inject.
+externalAccess:
+  enabled: true
+  autoDiscovery:
+    enabled: false
+  broker:
+    service:
+      type: LoadBalancer
+      ports:
+        external: 9094
+      annotations:
+        service.beta.kubernetes.io/aws-load-balancer-type: nlb
+        service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+      loadBalancerNames:
+        - "a2124eca3295942ebbecfa3ea783693d-fc2f125c6004ef47.elb.eu-north-1.amazonaws.com"
+  controller:
+    service:
+      type: ClusterIP
+      domain: controller.internal
+
+rbac:
+  create: true
