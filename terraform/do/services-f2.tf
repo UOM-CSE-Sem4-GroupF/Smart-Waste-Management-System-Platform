@@ -1,4 +1,4 @@
-# Group F — F2 Application Services
+# Group F — F2 Application Services (DigitalOcean)
 # PostgreSQL, InfluxDB, and Flink Processor
 # Owner: F2 Data Analysis Team
 
@@ -11,7 +11,7 @@ resource "kubernetes_config_map" "postgres_init_scripts" {
 
   data = {
     # CORRECTED: Pointing to the v3 schema in the root of DataAnalysis repo
-    "init.sql" = file("../../Smart-Waste-Management-System-DataAnalysis/database-schema-v3 (2).sql")
+    "init.sql" = file("../../../Smart-Waste-Management-System-DataAnalysis/database-schema-v3 (2).sql")
   }
 
   depends_on = [kubernetes_namespace.swms]
@@ -38,7 +38,7 @@ resource "helm_release" "postgres_waste" {
   }
   set {
     name  = "primary.persistence.storageClass"
-    value = "do-block-storage" # CORRECTED for DigitalOcean
+    value = "do-block-storage"
   }
   set {
     name  = "primary.initdb.scriptsConfigMap"
@@ -81,7 +81,7 @@ resource "helm_release" "influxdb" {
   }
   set {
     name  = "persistence.storageClass"
-    value = "do-block-storage" # CORRECTED for DigitalOcean
+    value = "do-block-storage"
   }
 
   depends_on = [
@@ -92,7 +92,7 @@ resource "helm_release" "influxdb" {
 # ── FLINK PROCESSOR ──────────────────────────────────────────────────────────
 resource "helm_release" "flink_processor" {
   name      = "flink-processor"
-  chart     = "../helm/charts/base-service"
+  chart     = "../../helm/charts/base-service"
   namespace = kubernetes_namespace.swms["waste-dev"].metadata[0].name
 
   set {
@@ -104,7 +104,6 @@ resource "helm_release" "flink_processor" {
     value = "latest"
   }
 
-  # Probes disabled because flink-processor is a consumer, not a web server
   set {
     name  = "livenessProbe.enabled"
     value = "false"
@@ -153,7 +152,7 @@ resource "helm_release" "flink_processor" {
   }
   set {
     name  = "env.POSTGRES_SCHEMA"
-    value = "f2" # ADDED: Required for v3 schema
+    value = "f2"
   }
   set {
     name  = "env.INFLUX_URL"
@@ -173,8 +172,8 @@ resource "helm_release" "flink_processor" {
   }
 
   depends_on = [
+    kubernetes_namespace.swms,
     helm_release.postgres_waste,
     helm_release.influxdb
   ]
 }
-
