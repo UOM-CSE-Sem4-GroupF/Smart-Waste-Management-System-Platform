@@ -1,0 +1,23 @@
+# Keycloak — Helm Value Overrides for DOKS
+# Layered on top of values-dev.yaml:
+#   helm upgrade --install keycloak oci://registry-1.docker.io/bitnamicharts/keycloak \
+#     -n auth \
+#     -f ./auth/keycloak/values-dev.yaml \
+#     -f ./auth/keycloak/values-doks.yaml
+#
+# Key changes:
+#   1. Image registry: public.ecr.aws → docker.io (ECR occasionally throttles non-AWS pulls)
+#   2. Service: ClusterIP (not exposed publicly; accessed via Kong in production)
+#   3. PostgreSQL storage: uses DOKS do-block-storage instead of AWS gp3
+
+# Keep Keycloak cluster-internal — expose via Kong route or kubectl port-forward
+service:
+  type: ClusterIP
+  ports:
+    http: 80
+
+postgresql:
+  primary:
+    persistence:
+      storageClass: do-block-storage
+      size: 1Gi

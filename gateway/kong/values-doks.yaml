@@ -1,0 +1,21 @@
+# Kong API Gateway — Helm Value Overrides for DOKS
+# Layered on top of values-dev.yaml:
+#   helm upgrade --install kong kong/kong -n gateway \
+#     -f ./gateway/kong/values-dev.yaml \
+#     -f ./gateway/kong/values-doks.yaml
+#
+# Key change: proxy switches from NodePort (Minikube) to LoadBalancer (DOKS).
+# DOKS auto-provisions a DigitalOcean Load Balancer (~$12/mo) and assigns
+# a public IP. Use that IP as the API gateway address for the mobile app and F3.
+
+proxy:
+  type: LoadBalancer
+  http:
+    enabled: true
+  tls:
+    enabled: false
+  annotations:
+    # Name the DO LB so it's identifiable in the DigitalOcean dashboard
+    service.beta.kubernetes.io/do-loadbalancer-name: "swms-kong-proxy"
+    # Ensure the LB uses HTTP (no TLS termination at LB for dev)
+    service.beta.kubernetes.io/do-loadbalancer-protocol: "http"

@@ -1,0 +1,34 @@
+# Kafka — Helm Value Overrides for DOKS
+# Layered on top of values-dev.yaml:
+#   helm upgrade --install kafka oci://registry-1.docker.io/bitnamicharts/kafka \
+#     -n messaging \
+#     -f ./messaging/kafka/values-dev.yaml \
+#     -f ./messaging/kafka/values-doks.yaml
+
+persistence:
+  storageClass: do-block-storage
+  size: 2Gi
+
+# External Kafka access via a DO reserved IP (139.59.219.132).
+# loadBalancerIPs seeds KAFKA_CFG_ADVERTISED_LISTENERS with the reserved IP
+# before the LoadBalancer service is created — same pattern as AWS loadBalancerNames.
+# The reserved IP must be created first: doctl compute reserved-ip create --region sgp1
+externalAccess:
+  enabled: true
+  autoDiscovery:
+    enabled: false
+  broker:
+    service:
+      type: LoadBalancer
+      ports:
+        external: 9094
+      # The DO Load Balancer IP (163.47.8.3) is stable for the lifetime of the LB.
+      # Clear the AWS loadBalancerNames from values-dev.yaml (chart prefers names over IPs).
+      loadBalancerNames: []
+      loadBalancerIPs:
+        - "163.47.8.3"
+      annotations:
+        service.beta.kubernetes.io/do-loadbalancer-name: "swms-kafka-external"
+  controller:
+    service:
+      type: ClusterIP

@@ -20,9 +20,8 @@ server:
   # Expose UI and API on a NodePort for Minikube access
   service:
     enabled: true
-    type: NodePort
+    type: ClusterIP
     port: 8200
-    nodePort: 30820
 
   # Resource limits appropriate for Minikube
   resources:
@@ -55,8 +54,7 @@ server:
 # ─── UI ──────────────────────────────────────────────────────────
 ui:
   enabled: true
-  serviceType: NodePort
-  serviceNodePort: 30820
+  serviceType: ClusterIP
 
 # ─── Injector (Vault Agent Injector) ─────────────────────────────
 # Enabled: this deploys the mutating webhook that auto-injects

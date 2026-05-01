@@ -1,0 +1,37 @@
+# EMQX MQTT Broker — Helm Value Overrides for DOKS
+# Layered on top of values-dev.yaml:
+#   helm upgrade --install emqx emqx/emqx -n messaging \
+#     -f ./messaging/emqx/values-dev.yaml \
+#     -f ./messaging/emqx/values-doks.yaml
+#
+# Key changes:
+#   1. Service: LoadBalancer (instead of NodePort) — DOKS provisions a public DO LB.
+#      F1 ESP32 devices and Node-RED edge gateways connect to port 1883 on the LB IP.
+#   2. Dashboard stays on port 18083 but is NOT in the LB — access via port-forward.
+
+service:
+  type: LoadBalancer
+  annotations:
+    service.beta.kubernetes.io/do-loadbalancer-name: "swms-emqx-mqtt"
+
+persistence:
+  storageClass: do-block-storage
+  size: 1Gi
+
+# EMQX 5.x Erlang VM peak startup usage exceeds 1Gi — needs 2Gi headroom.
+resources:
+  requests:
+    cpu: 100m
+    memory: 512Mi
+  limits:
+    cpu: 500m
+    memory: 2Gi
+
+# Force EMQX onto the node that does NOT run kafka-broker (node 1 has ~2.5GB free).
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchLabels:
+            app.kubernetes.io/component: broker
+        topologyKey: kubernetes.io/hostname
