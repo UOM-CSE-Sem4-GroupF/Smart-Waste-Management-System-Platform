@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "base-service.fullname" . }}-config
+data:
+  # Put non-sensitive configuration here. Secrets should be injected via Vault.
+  APP_ENV: "dev"
+  LOG_LEVEL: "info"
