@@ -1,6 +1,7 @@
 apiVersion: v2
 name: base-service
-description: Base Helm chart template for SWMS services (copy for each service)
+description: Enterprise-grade base Helm chart for all SWMS microservices. Includes security contexts, PDB, NetworkPolicy, ServiceMonitor, and ESO ExternalSecret support.
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 1.0.0
+appVersion: "1.0.0"
+

@@ -3,23 +3,41 @@ kind: Deployment
 metadata:
   name: {{ include "base-service.fullname" . }}
   labels:
-    app: {{ include "base-service.name" . }}
+    {{- include "base-service.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      app: {{ include "base-service.name" . }}
+      {{- include "base-service.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        app: {{ include "base-service.name" . }}
+        {{- include "base-service.selectorLabels" . | nindent 8 }}
+      annotations:
+        # Force a rolling restart when the ConfigMap changes
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
+      serviceAccountName: {{ include "base-service.serviceAccountName" . }}
+
+      # ── Pod-level security ─────────────────────────────────────────────────
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+
       containers:
         - name: {{ include "base-service.name" . }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+
+          # ── Container-level security ───────────────────────────────────────
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+
           ports:
-            - containerPort: {{ .Values.service.port }}
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+
+          # ── Resource guarantees ────────────────────────────────────────────
           resources:
             requests:
               cpu: {{ .Values.resources.requests.cpu }}
@@ -27,6 +45,8 @@ spec:
             limits:
               cpu: {{ .Values.resources.limits.cpu }}
               memory: {{ .Values.resources.limits.memory }}
+
+          # ── Health probes ──────────────────────────────────────────────────
           {{- if .Values.livenessProbe.enabled }}
           livenessProbe:
             httpGet:
@@ -34,6 +54,7 @@ spec:
               port: {{ .Values.livenessProbe.httpGet.port }}
             initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
             periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+            failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
           {{- end }}
           {{- if .Values.readinessProbe.enabled }}
           readinessProbe:
@@ -42,7 +63,34 @@ spec:
               port: {{ .Values.readinessProbe.httpGet.port }}
             initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
             periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+            failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
           {{- end }}
+
+          # ── Environment injection ──────────────────────────────────────────
           envFrom:
+            # Non-secret config from ConfigMap
             - configMapRef:
                 name: {{ include "base-service.fullname" . }}-config
+            {{- if .Values.externalSecret.enabled }}
+            # Vault-synced secrets via ESO
+            - secretRef:
+                name: {{ include "base-service.fullname" . }}-secrets
+            {{- end }}
+
+          # ── Volume mounts ──────────────────────────────────────────────────
+          volumeMounts:
+            # Required when readOnlyRootFilesystem=true — give the app a tmp dir
+            - name: tmp
+              mountPath: /tmp
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+
+      # ── Volumes ─────────────────────────────────────────────────────────────
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+

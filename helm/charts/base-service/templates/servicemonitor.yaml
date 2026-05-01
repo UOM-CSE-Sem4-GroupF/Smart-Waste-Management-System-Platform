@@ -1,0 +1,25 @@
+{{- if .Values.serviceMonitor.enabled -}}
+# ServiceMonitor: automatically registers this service as a Prometheus scrape target.
+# Requires kube-prometheus-stack to be installed in the monitoring namespace.
+# The Prometheus operator will discover this resource and add it to its scrape config.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "base-service.fullname" . }}-monitor
+  labels:
+    {{- include "base-service.labels" . | nindent 4 }}
+    # This label is required for Prometheus to discover the ServiceMonitor
+    release: monitoring
+spec:
+  selector:
+    matchLabels:
+      {{- include "base-service.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: {{ .Values.serviceMonitor.path }}
+      interval: {{ .Values.serviceMonitor.interval }}
+      scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout }}
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+{{- end }}
