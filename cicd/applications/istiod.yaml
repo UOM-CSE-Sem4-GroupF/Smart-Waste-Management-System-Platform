@@ -1,0 +1,33 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: istiod
+  namespace: cicd
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    component: networking
+  annotations:
+    argocd.argoproj.io/sync-wave: "-4" # Deploy after base CRDs
+spec:
+  project: platform
+  source:
+    repoURL: https://istio-release.storage.googleapis.com/charts
+    chart: istiod
+    targetRevision: 1.22.0
+    helm:
+      values: |
+        meshConfig:
+          accessLogFile: /dev/stdout
+          enableTracing: true
+          defaultConfig:
+            holdApplicationUntilProxyReceivesConfig: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: istio-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

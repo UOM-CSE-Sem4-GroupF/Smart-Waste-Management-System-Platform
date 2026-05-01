@@ -1,0 +1,24 @@
+# Group F — Smart Waste Management System
+# Istio Global Security Policies
+# Owner: F4 Platform Team
+
+# Enforce STRICT mTLS cluster-wide
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: istio-system
+spec:
+  mtls:
+    mode: STRICT
+
+---
+# Default Deny AuthorizationPolicy for the entire mesh
+# This forces us to explicitly allow traffic between services.
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: global-default-deny
+  namespace: istio-system
+spec:
+  {} # Empty spec = Deny All

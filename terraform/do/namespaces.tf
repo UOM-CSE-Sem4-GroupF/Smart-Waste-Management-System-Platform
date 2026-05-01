@@ -28,6 +28,10 @@ locals {
       environment = "dev"
       description = "Hyperledger Fabric peer, orderer, CA"
     }
+    "istio-system" = {
+      environment = "dev"
+      description = "Istio Service Mesh Control Plane"
+    }
     "waste-dev" = {
       environment = "dev"
       description = "F2 + F3 application services (development)"
@@ -48,6 +52,8 @@ resource "kubernetes_namespace" "swms" {
       project     = "group-f-swms"
       "managed-by" = "f4-platform"
       environment = each.value.environment
+      # Enable Istio sidecar injection for all non-system namespaces
+      istio-injection = contains(["istio-system", "cicd", "monitoring"], each.key) ? "disabled" : "enabled"
     }
     annotations = {
       description = each.value.description
