@@ -1,0 +1,67 @@
+# Group F — Smart Waste Management System
+# Argo CD Application: vault
+# Owner: F4 Platform Team
+#
+# Multi-source pattern (Argo CD >= 2.6):
+#   Source 1: HashiCorp Vault official Helm chart
+#   Source 2: This repo ($values ref) — provides auth/vault/values-dev.yaml
+#
+# Chart version: pin to the version installed by setup-local.sh.
+#   Run: helm search repo hashicorp/vault --versions | head -5
+#   Update targetRevision below and in scripts/setup-local.sh together.
+# Namespace: auth
+#
+# IMPORTANT: Vault runs in dev mode for local development (in-memory storage,
+# auto-unsealed). The vault-bootstrap Job (seeds secrets + K8s auth) is
+# applied separately by scripts/setup-local.sh and is NOT managed here.
+# Dev mode root token: swms-vault-dev-root-token
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault
+  namespace: cicd
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    component: auth
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+
+  sources:
+    - repoURL: https://helm.releases.hashicorp.com
+      chart: vault
+      # Update this version when upgrading Vault — match setup-local.sh
+      targetRevision: "0.29.1"
+      helm:
+        releaseName: vault
+        valueFiles:
+          - $values/auth/vault/values-dev.yaml
+
+    - repoURL: https://github.com/UOM-CSE-Sem4-GroupF/group-f-platform
+      targetRevision: main
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: auth
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+
+  ignoreDifferences:
+    # Vault mutates its own service account annotations
+    - group: ""
+      kind: ServiceAccount
+      name: vault
+      jsonPointers:
+        - /metadata/annotations

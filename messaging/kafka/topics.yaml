@@ -28,32 +28,6 @@ spec:
       name: kafka-topic-init
     spec:
       restartPolicy: OnFailure
-      # Wait for the kafka-user-passwords secret to exist before starting
-      initContainers:
-        - name: wait-for-kafka
-          image: public.ecr.aws/bitnami/kafka:4.0.0-debian-12-r10
-          command:
-            - /bin/bash
-            - -c
-            - |
-              echo "Waiting for Kafka to be reachable..."
-              until kafka-topics.sh \
-                --command-config /tmp/client.properties \
-                --bootstrap-server kafka.messaging.svc.cluster.local:9092 \
-                --list &>/dev/null; do
-                echo "  Kafka not ready, retrying in 5s..."
-                sleep 5
-              done
-              echo "Kafka is ready!"
-          env:
-            - name: KAFKA_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: kafka-user-passwords
-                  key: client-passwords
-          volumeMounts:
-            - name: client-config
-              mountPath: /tmp
       containers:
         - name: kafka-topic-init
           # Use the same public.ecr.aws image as the broker
@@ -156,7 +130,6 @@ spec:
       volumes:
         - name: client-config
           emptyDir: {}
-      # Shared init logic: write client.properties to emptyDir before topics are created
       initContainers:
         - name: write-client-config
           image: public.ecr.aws/bitnami/kafka:4.0.0-debian-12-r10

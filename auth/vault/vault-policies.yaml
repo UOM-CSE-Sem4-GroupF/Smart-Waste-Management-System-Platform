@@ -47,7 +47,7 @@ data:
     done
     echo "  ✅ Vault is ready and unsealed."
 
-    # Enable set -e AFTER the wait loop to avoid premature exit on curl non-zero
+    # Enable set -e AFTER the wait loop to avoid premature exit on non-zero
     set -e
 
     # ── Enable KV v2 secrets engine ──────────────────────────

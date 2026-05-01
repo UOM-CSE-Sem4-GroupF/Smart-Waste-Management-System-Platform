@@ -1,0 +1,67 @@
+# Group F — Smart Waste Management System
+# Argo CD Application: kafka
+# Owner: F4 Platform Team
+#
+# Multi-source pattern (Argo CD >= 2.6):
+#   Source 1: Bitnami Kafka OCI chart (upstream chart)
+#   Source 2: This repo ($values ref) — provides messaging/kafka/values-dev.yaml
+#
+# Chart version: 32.4.3 (matches KAFKA_CHART_VERSION in scripts/setup-local.sh)
+# Namespace: messaging
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kafka
+  namespace: cicd
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    component: messaging
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+
+  sources:
+    # Upstream OCI chart — pinned to version matching setup-local.sh
+    - repoURL: registry-1.docker.io/bitnamicharts
+      chart: kafka
+      targetRevision: "32.4.3"
+      helm:
+        releaseName: kafka
+        valueFiles:
+          - $values/messaging/kafka/values-dev.yaml
+
+    # Values source — this repo provides the values file via $values alias
+    - repoURL: https://github.com/UOM-CSE-Sem4-GroupF/group-f-platform
+      targetRevision: main
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: messaging
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+
+  ignoreDifferences:
+    # StatefulSet volumeClaimTemplates are immutable after creation
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /spec/volumeClaimTemplates
+    # Kafka generates a default config that differs from Argo CD's view
+    - group: ""
+      kind: ConfigMap
+      name: kafka-configuration
+      jsonPointers:
+        - /data
