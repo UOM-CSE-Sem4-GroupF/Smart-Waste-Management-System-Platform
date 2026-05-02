@@ -40,6 +40,12 @@ spec:
       namespace: cicd
     - server: https://kubernetes.default.svc
       namespace: blockchain
+    - server: https://kubernetes.default.svc
+      namespace: waste-dev
+    - server: https://kubernetes.default.svc
+      namespace: waste-prod
+    - server: https://kubernetes.default.svc
+      namespace: eso
 
   clusterResourceWhitelist:
     - group: '*'
