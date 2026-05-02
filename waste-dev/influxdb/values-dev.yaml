@@ -2,6 +2,10 @@
 # InfluxDB
 # Namespace: waste-dev
 
+image:
+  registry: ghcr.io
+  repository: bitnami/influxdb
+
 auth:
   admin:
     username: admin
