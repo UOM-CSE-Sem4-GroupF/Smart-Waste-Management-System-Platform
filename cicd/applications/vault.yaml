@@ -36,7 +36,7 @@ spec:
     - repoURL: https://helm.releases.hashicorp.com
       chart: vault
       # Update this version when upgrading Vault — match setup-local.sh
-      targetRevision: "0.32.0"
+      targetRevision: "0.29.1"
       helm:
         releaseName: vault
         valueFiles:

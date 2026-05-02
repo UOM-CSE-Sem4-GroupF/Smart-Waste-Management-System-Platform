@@ -37,7 +37,7 @@ spec:
     - repoURL: https://charts.konghq.com
       chart: kong
       # Update this version when upgrading Kong — match setup-local.sh
-      targetRevision: "3.2.0"
+      targetRevision: "2.48.0"
       helm:
         releaseName: kong
         valueFiles:
