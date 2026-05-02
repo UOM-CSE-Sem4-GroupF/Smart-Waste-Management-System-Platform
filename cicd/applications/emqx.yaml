@@ -32,7 +32,7 @@ spec:
   sources:
     - repoURL: https://repos.emqx.io/charts
       chart: emqx
-      targetRevision: "5.6.0"
+      targetRevision: "5.8.9"
       helm:
         releaseName: emqx
         valueFiles:
