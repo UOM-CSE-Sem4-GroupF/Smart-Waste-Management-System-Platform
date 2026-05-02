@@ -15,7 +15,7 @@ spec:
   sources:
     - repoURL: registry-1.docker.io/bitnamicharts
       chart: influxdb
-      targetRevision: "7.1.20"
+      targetRevision: "6.3.14"
       helm:
         releaseName: influxdb
         valueFiles:

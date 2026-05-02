@@ -40,6 +40,8 @@ extraEnv:
       secretKeyRef:
         name: emqx-credentials
         key: default-password
+  - name: ERL_FLAGS
+    value: "+MBcsbcs 512 +MHmbs 64 +MMsco true"
 
 # ─── Service Configuration ────────────────────────────────────────
 # Use the EMQX chart's native flat port format

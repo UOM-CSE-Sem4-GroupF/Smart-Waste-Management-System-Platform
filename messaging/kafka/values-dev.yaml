@@ -20,11 +20,25 @@ kraft:
 
 controller:
   replicaCount: 1
+  resources:
+    requests:
+      cpu: 150m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi
 
 broker:
   replicaCount: 1
+  resources:
+    requests:
+      cpu: 150m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi
 
-# Resource limits are kept low for Minikube
+# Fallback resources for any other components
 resources:
   requests:
     cpu: 150m
