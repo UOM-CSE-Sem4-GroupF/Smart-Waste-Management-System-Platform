@@ -28,7 +28,13 @@
       "Read(//e/Porjects/sem 4/Software-Engineering/Smart-Wast-Management-System/Smart-Waste-Management-System-Application/**)",
       "Bash(timeout 20 python kafka_consumer.py)",
       "Bash(kubectl exec *)",
-      "Bash(timeout 35 python kafka_consumer.py)"
+      "Bash(timeout 35 python kafka_consumer.py)",
+      "PowerShell(Get-ChildItem -Path \"d:\\\\Projects\\\\Smart-Waste-Management-System-Platform\" -Force | Select-Object Name, @{Name='Type';Expression={if\\($_.PSIsContainer\\){'DIR'}else{'FILE'}}})",
+      "PowerShell(Get-ChildItem -Path \"d:\\\\Projects\\\\Smart-Waste-Management-System-Platform\" -Force | Format-Table -Property Name, @{Name='Type';Expression={if\\($_.PSIsContainer\\){'DIR'}else{'FILE'}}} -AutoSize)",
+      "PowerShell(Get-ChildItem -Path \"d:\\\\Projects\\\\Smart-Waste-Management-System-Platform\\\\.github\" -Force -Recurse | Select-Object Name, @{Name='Type';Expression={if\\($_.PSIsContainer\\){'DIR'}else{'FILE'}}})",
+      "PowerShell(tree /F \"d:\\\\Projects\\\\Smart-Waste-Management-System-Platform\" -L 2)",
+      "PowerShell(Get-ChildItem -Path \"d:\\\\Projects\\\\Smart-Waste-Management-System-Platform\" -Force | ForEach-Object { if \\($_.PSIsContainer\\) { Get-ChildItem -Path $_.FullName -Force | Select-Object @{Name='Path';Expression={$_.FullName.Replace\\('d:\\\\Projects\\\\Smart-Waste-Management-System-Platform\\\\',''\\)}}, @{Name='Type';Expression={if\\($_.PSIsContainer\\){'DIR'}else{'FILE'}}} } else { $_ | Select-Object @{Name='Path';Expression={$_.FullName.Replace\\('d:\\\\Projects\\\\Smart-Waste-Management-System-Platform\\\\',''\\)}}, @{Name='Type';Expression={'FILE'}} } })",
+      "PowerShell(Get-ChildItem -Recurse \"d:\\\\Projects\\\\Smart-Waste-Management-System-Platform\" -Directory -Force | Where-Object { $_.FullName.Split\\('\\\\'\\).Count -le 6 } | Select-Object -ExpandProperty FullName | Sort-Object | ForEach-Object { \"DIR:  $_\" }; Get-ChildItem -Recurse \"d:\\\\Projects\\\\Smart-Waste-Management-System-Platform\" -File -Force -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName | Sort-Object | ForEach-Object { \"FILE: $_\" } | head -100)"
     ]
   }
 }
