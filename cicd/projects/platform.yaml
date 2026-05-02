@@ -1,0 +1,67 @@
+# Group F — Smart Waste Management System
+# Argo CD AppProject: platform
+# Owner: F4 Platform Team
+#
+# Covers all infrastructure namespaces: gateway, auth, messaging, monitoring, cicd, blockchain
+# Source repos: this repo + all upstream Helm chart registries used by setup-local.sh
+#
+# Apply with: kubectl apply -n cicd -f cicd/projects/platform.yaml
+
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: cicd
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+spec:
+  description: Platform infrastructure components (Kafka, Kong, Keycloak, Vault, EMQX, Argo CD)
+
+  sourceRepos:
+    - https://github.com/UOM-CSE-Sem4-GroupF/Smart-Waste-Management-System-Platform
+    - https://charts.bitnami.com/bitnami
+    - registry-1.docker.io/bitnamicharts
+    - https://charts.konghq.com
+    - https://helm.releases.hashicorp.com
+    - https://repos.emqx.io/charts
+    - https://argoproj.github.io/argo-helm
+
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: gateway
+    - server: https://kubernetes.default.svc
+      namespace: auth
+    - server: https://kubernetes.default.svc
+      namespace: messaging
+    - server: https://kubernetes.default.svc
+      namespace: monitoring
+    - server: https://kubernetes.default.svc
+      namespace: cicd
+    - server: https://kubernetes.default.svc
+      namespace: blockchain
+
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'
+
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+
+  roles:
+    - name: f4-devops
+      description: F4 platform team — full sync and override rights
+      policies:
+        - p, proj:platform:f4-devops, applications, *, platform/*, allow
+        - p, proj:platform:f4-devops, repositories, *, *, allow
+      groups:
+        - f4-devops
+    - name: readonly
+      description: Read-only for all sub-groups
+      policies:
+        - p, proj:platform:readonly, applications, get, platform/*, allow
+      groups:
+        - f1-team
+        - f2-team
+        - f3-team

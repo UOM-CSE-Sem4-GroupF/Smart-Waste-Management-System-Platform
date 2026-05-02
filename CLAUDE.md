@@ -10,11 +10,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is the **F4 platform repo** — pure infrastructure configuration. There is no application code. Everything here produces Kubernetes manifests and Helm value overrides that Argo CD deploys to the cluster.
 
+GitHub org: `UOM-CSE-Sem4-GroupF` — platform repo is `group-f-platform`.
+
 ---
 
 ## Development Commands
 
-### Cluster lifecycle
+### Local cluster lifecycle (Minikube)
 ```bash
 # Full local setup (idempotent — safe to re-run)
 bash ./scripts/setup-local.sh
@@ -26,7 +28,22 @@ minikube delete && minikube start && bash ./scripts/setup-local.sh
 kubectl get pods -A
 ```
 
-### Access services after setup
+Minikube requires 4 CPUs / 6 GB RAM / 20 GB disk. On Windows, Docker Desktop must be running first.
+
+### DigitalOcean cloud deployment (DOKS)
+```bash
+export DO_TOKEN="dop_v1_..."          # from DigitalOcean dashboard
+bash ./scripts/setup-doks.sh
+```
+
+This provisions the DOKS cluster via Terraform (`terraform/do/`), configures kubectl, then installs all platform services. Each service gets both a `values-dev.yaml` and a `values-doks.yaml` overlay (LoadBalancer IPs, storage class `do-block-storage`).
+
+Destroy when not in use:
+```bash
+cd terraform/do && terraform destroy -var="do_token=$DO_TOKEN"
+```
+
+### Access services after local setup
 ```bash
 # Kong proxy (API gateway)
 minikube service kong-kong-proxy -n gateway
@@ -35,20 +52,18 @@ minikube service kong-kong-proxy -n gateway
 minikube service keycloak -n auth
 
 # Vault UI  →  token: swms-vault-dev-root-token
-# (NodePort 30820 — use minikube tunnel or port-forward)
 kubectl port-forward -n auth svc/vault 30820:8200
 
-# EMQX dashboard  →  admin / swms-emqx-dev-2026
-# (NodePort 31083)
+# EMQX dashboard  →  admin / swms-emqx-dev-2026  (NodePort 31083)
 ```
+
+On DOKS, use `kubectl port-forward` for Keycloak, Vault, and EMQX dashboard — only Kong and EMQX MQTT are exposed via LoadBalancer.
 
 ### Kafka debugging
 ```bash
-# List topics
 kubectl exec -it kafka-broker-0 -n messaging -- \
   kafka-topics.sh --list --bootstrap-server localhost:9092
 
-# Tail a topic (replace <topic>)
 kubectl exec -it kafka-broker-0 -n messaging -- \
   kafka-console-consumer.sh --topic <topic> --from-beginning \
   --bootstrap-server localhost:9092
@@ -87,7 +102,12 @@ helm upgrade keycloak oci://registry-1.docker.io/bitnamicharts/keycloak \
 
 helm upgrade vault hashicorp/vault \
   -n auth -f ./auth/vault/values-dev.yaml
+
+helm upgrade emqx emqx/emqx \
+  -n messaging -f ./messaging/emqx/values-dev.yaml
 ```
+
+On DOKS, append `-f ./messaging/kafka/values-doks.yaml` (etc.) to layer the cloud overrides.
 
 ### Cleanup
 ```bash
@@ -97,7 +117,6 @@ helm uninstall kafka -n messaging
 helm uninstall emqx -n messaging
 helm uninstall vault -n auth
 
-# Nuke all namespaces
 kubectl delete namespaces gateway auth messaging monitoring cicd blockchain waste-dev waste-prod
 ```
 
@@ -107,32 +126,60 @@ kubectl delete namespaces gateway auth messaging monitoring cicd blockchain wast
 
 ```
 scripts/
-  setup-local.sh          Idempotent full-stack setup (run this first)
+  setup-local.sh          Idempotent Minikube full-stack setup
+  setup-doks.sh           DigitalOcean DOKS cloud deployment (Terraform + Helm)
 
 namespaces/
   namespaces-dev.yaml     All 8 K8s namespaces defined here
 
 gateway/kong/
   kong-config.yaml        Kong DB-less declarative config (ConfigMap)
-                          Add new service routes here — applied as a K8s ConfigMap
   values-dev.yaml         Kong Helm values (DB-less mode, NodePort 30080)
+  values-doks.yaml        DOKS overrides (LoadBalancer, DO annotations)
 
 auth/keycloak/
   realm-export.json       Full realm definition: roles, clients, test users
-                          Mounted as a ConfigMap; Keycloak imports on first start
+  realm-configmap.yaml    ConfigMap wrapper for realm-export.json
+  external-secret.yaml    ExternalSecret (ESO) pulling Keycloak creds from Vault
   values-dev.yaml         Keycloak Helm values (NodePort 30180)
+  values-doks.yaml        DOKS overrides
 
 auth/vault/
   vault-policies.yaml     Vault bootstrap Job: seeds secrets + configures K8s auth
   values-dev.yaml         Vault Helm values (dev mode, NodePort 30820)
 
 messaging/kafka/
-  topics.yaml             K8s Job that creates all 13 Kafka topics with retention config
+  topics.yaml             K8s Job that creates all 13 Kafka topics
+  external-secret.yaml    ExternalSecret pulling Kafka creds from Vault
   values-dev.yaml         Kafka Helm values (single KRaft broker, no Zookeeper)
+  values-doks.yaml        DOKS overrides (3 brokers, persistent storage)
 
 messaging/emqx/
   emqx-bootstrap.yaml     K8s Job: creates MQTT users + Kafka bridge rules
-  values-dev.yaml         EMQX Helm values (NodePort 31883 for MQTT, 31083 for dashboard)
+  bridge-deployment.yaml  Standalone EMQX–Kafka bridge deployment manifest
+  external-secret.yaml    ExternalSecret pulling EMQX creds from Vault
+  values-dev.yaml         EMQX Helm values (NodePort 31883/31083)
+  values-doks.yaml        DOKS overrides
+
+monitoring/
+  values.yaml             kube-prometheus-stack Helm values
+
+helm/charts/base-service/ Reusable Helm chart template for all F2/F3 services
+  Chart.yaml
+  values.yaml             Default values: image, service, resources, probes, HPA
+  values-dev.yaml         Dev overrides
+  values-prod.yaml        Prod overrides
+  templates/              deployment, service, configmap, hpa, pvc
+
+cicd/
+  bootstrap/root-app.yaml App-of-Apps bootstrap — apply once after Argo CD install
+  applications/           Per-platform-service Argo CD Applications (Kafka, Kong, etc.)
+  appsets/services-dev.yaml ApplicationSet for F2/F3 services (Phase 2 — currently commented out)
+  argocd/                 Argo CD Helm values, RBAC, Image Updater config
+  projects/               Argo CD project definitions (platform, services)
+
+infrastructure/
+  eso/cluster-secret-store.yaml  ESO ClusterSecretStore pointing at Vault backend
 ```
 
 ---
@@ -153,6 +200,22 @@ Edit `auth/keycloak/realm-export.json`. For new service clients, add to the `cli
 ### Seeding a new Vault secret
 Edit `auth/vault/vault-policies.yaml` (the bootstrap Job). All secrets live under `secret/waste-mgmt/`. Vault injects them into pods as files at `/vault/secrets/` via the sidecar agent — never via environment variables.
 
+### External Secrets Operator (ESO)
+Vault → K8s Secret bridge: `infrastructure/eso/cluster-secret-store.yaml` defines a `ClusterSecretStore` using Vault's Kubernetes auth. Each service that needs a K8s Secret has a corresponding `external-secret.yaml` referencing paths under `secret/waste-mgmt/`. ESO syncs these automatically; Helm charts reference the resulting K8s Secrets.
+
+### Onboarding a new F2/F3 service (Phase 2)
+1. Create `apps/<service-name>/Chart.yaml` using `helm/charts/base-service/` as the parent chart.
+2. Add `apps/<service-name>/values-dev.yaml` with the service image and env vars.
+3. Uncomment `cicd/appsets/services-dev.yaml` (once first service is ready) — the ApplicationSet auto-generates an Argo CD Application per directory under `apps/`.
+4. Argo CD Image Updater then watches GHCR and writes back `image.tag` to `values-dev.yaml` on each push.
+
+### Argo CD App-of-Apps bootstrap
+The `cicd/bootstrap/root-app.yaml` application watches `cicd/applications/` and manages all platform Applications. Bootstrap it once:
+```bash
+kubectl apply -n cicd -f cicd/bootstrap/root-app.yaml
+```
+After that, all changes to `cicd/applications/*.yaml` are auto-deployed.
+
 ### EMQX MQTT ↔ Kafka bridge rules
 Configured in `messaging/emqx/emqx-bootstrap.yaml`. Current bridge:
 - MQTT topic `sensors/#` → Kafka `waste.bin.telemetry`
@@ -169,11 +232,11 @@ Configured in `messaging/emqx/emqx-bootstrap.yaml`. Current bridge:
 | EMQX dashboard | `admin` / `swms-emqx-dev-2026` |
 | MQTT sensor device | `sensor-device` / `swms-sensor-dev-2026` |
 | MQTT edge gateway | `edge-gateway` / `swms-edge-dev-2026` |
+| Keycloak test admin | `admin@swms-dev.local` / `swms-admin-dev` |
 | Keycloak test supervisor | `supervisor@swms-dev.local` / `swms-supervisor-dev` |
+| Keycloak test operator | `operator@swms-dev.local` / `swms-operator-dev` |
 | Keycloak test driver | `driver@swms-dev.local` / `swms-driver-dev` |
-
----
-
-## Minikube Resource Requirements
-
-`setup-local.sh` starts Minikube with 4 CPUs / 6 GB RAM / 20 GB disk. This is the minimum to run Kafka + Keycloak + Kong + Vault + EMQX simultaneously. On Windows, Docker Desktop must be running before the script is invoked.
+| PostgreSQL | `waste_admin` / `waste_admin_password` (db: `waste_management`) |
+| InfluxDB | `admin` / `admin12345` (org: `waste-org`) |
+| Grafana | `admin` / `admin` |
+| Keycloak internal service | client `waste-api-internal` / `internal-service-secret-dev` |

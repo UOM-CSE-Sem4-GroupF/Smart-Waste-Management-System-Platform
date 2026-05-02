@@ -39,7 +39,10 @@ spec:
             - name: MQTT_USER
               value: "f1-admin"
             - name: MQTT_PASS
-              value: "swms-f1-admin-2026"
+              valueFrom:
+                secretKeyRef:
+                  name: emqx-credentials
+                  key: admin-password
           volumeMounts:
             - name: bridge-script
               mountPath: /app/bridge.py
@@ -72,11 +75,11 @@ data:
     MQTT_BROKER = os.getenv("MQTT_BROKER", "emqx.messaging.svc.cluster.local")
     MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
     MQTT_USER = os.getenv("MQTT_USER", "f1-admin")
-    MQTT_PASS = os.getenv("MQTT_PASS", "swms-f1-admin-2026")
+    MQTT_PASS = os.getenv("MQTT_PASS")
 
     KAFKA_BROKER = os.getenv("KAFKA_BROKER", "kafka.messaging.svc.cluster.local:9092")
     KAFKA_USER = os.getenv("KAFKA_USER", "user1")
-    KAFKA_PASS = os.getenv("KAFKA_PASS", "QA7aKGtPHV")
+    KAFKA_PASS = os.getenv("KAFKA_PASS")
 
     # Topic Mapping: MQTT -> Kafka
     TOPIC_MAP = {

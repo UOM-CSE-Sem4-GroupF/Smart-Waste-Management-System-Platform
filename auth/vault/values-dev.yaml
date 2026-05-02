@@ -17,7 +17,7 @@ server:
     enabled: true
     devRootToken: "swms-vault-dev-root-token"
 
-  # Expose UI and API on a NodePort for Minikube access
+  # Expose API internally only — UI service below handles external access
   service:
     enabled: true
     type: ClusterIP

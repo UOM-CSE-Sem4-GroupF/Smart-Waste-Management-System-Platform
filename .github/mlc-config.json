@@ -1,0 +1,23 @@
+{
+  "ignorePatterns": [
+    {
+      "pattern": "^https://api\\.waste-mgmt\\.lk"
+    },
+    {
+      "pattern": "^https://grafana\\.waste-mgmt\\.lk"
+    },
+    {
+      "pattern": "^https://kibana\\.waste-mgmt\\.lk"
+    },
+    {
+      "pattern": "^https://auth\\.waste-mgmt\\.lk"
+    },
+    {
+      "pattern": "^http://localhost"
+    },
+    {
+      "pattern": "^http://argocd\\.local"
+    }
+  ],
+  "httpStatusIgnore": [429, 503]
+}

@@ -1,0 +1,16 @@
+{{- if .Values.podDisruptionBudget.enabled -}}
+# PodDisruptionBudget ensures that during voluntary disruptions (node drains,
+# cluster upgrades), at least minAvailable pods remain running.
+# Only effective when replicaCount >= 2. Enable this in production.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "base-service.fullname" . }}-pdb
+  labels:
+    {{- include "base-service.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "base-service.selectorLabels" . | nindent 6 }}
+{{- end }}

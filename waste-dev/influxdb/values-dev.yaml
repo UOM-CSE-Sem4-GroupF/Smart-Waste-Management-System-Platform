@@ -1,0 +1,14 @@
+# F2 Application Services (DigitalOcean)
+# InfluxDB
+# Namespace: waste-dev
+
+auth:
+  admin:
+    username: admin
+    password: admin12345
+    token: my-super-token
+    org: waste-org
+    bucket: waste-bootstrap
+
+persistence:
+  storageClass: do-block-storage

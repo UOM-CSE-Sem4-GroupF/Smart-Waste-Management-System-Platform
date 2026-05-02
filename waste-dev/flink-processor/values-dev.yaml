@@ -1,0 +1,50 @@
+# F2 Application Services (DigitalOcean)
+# Flink Processor
+# Namespace: waste-dev
+# Built on top of base-service v1.0.0
+
+image:
+  repository: ghcr.io/uom-cse-sem4-groupf/flink-processor
+  tag: latest
+
+livenessProbe:
+  enabled: false
+readinessProbe:
+  enabled: false
+
+# Standard environment variables
+env:
+  APP_ENV: dev
+  KAFKA_BOOTSTRAP_SERVERS: kafka.messaging.svc.cluster.local:9092
+  POSTGRES_HOST: postgres-waste-postgresql.waste-dev.svc.cluster.local
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: waste_management
+  POSTGRES_USER: waste_admin
+  POSTGRES_SCHEMA: f2
+  INFLUX_URL: http://influxdb.waste-dev.svc.cluster.local:8086
+  INFLUX_ORG: waste-org
+  INFLUX_ENABLED: "true"
+
+# Vault integration via ESO
+externalSecret:
+  enabled: true
+  vaultPath: secret/swms/kafka
+  secretStoreName: vault-backend
+  secretStoreKind: ClusterSecretStore
+  data:
+    - secretKey: KAFKA_PASSWORD
+      remoteRef:
+        key: secret/swms/kafka
+        property: sasl_password
+    - secretKey: KAFKA_USERNAME
+      remoteRef:
+        key: secret/swms/kafka
+        property: sasl_username
+    - secretKey: POSTGRES_PASSWORD
+      remoteRef:
+        key: secret/swms/postgres-waste
+        property: password
+    - secretKey: INFLUX_TOKEN
+      remoteRef:
+        key: secret/swms/influxdb
+        property: token

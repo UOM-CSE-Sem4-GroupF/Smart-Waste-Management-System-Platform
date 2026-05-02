@@ -1,0 +1,64 @@
+# Group F — Smart Waste Management System
+# Argo CD AppProject: services
+# Owner: F4 Platform Team
+#
+# Covers application namespaces: waste-dev, waste-prod
+# Source repos: scoped to group-f-* GitHub repos and GHCR
+#
+# Apply with: kubectl apply -n cicd -f cicd/projects/services.yaml
+
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: services
+  namespace: cicd
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+spec:
+  description: Application services (F1/F2/F3) deployed to waste-dev and waste-prod
+
+  sourceRepos:
+    - https://github.com/UOM-CSE-Sem4-GroupF/group-f-platform
+    - https://github.com/UOM-CSE-Sem4-GroupF/group-f-edge
+    - https://github.com/UOM-CSE-Sem4-GroupF/group-f-data
+    - https://github.com/UOM-CSE-Sem4-GroupF/group-f-application
+    - ghcr.io/uom-cse-sem4-groupf/*
+
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: waste-dev
+    - server: https://kubernetes.default.svc
+      namespace: waste-prod
+
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+
+  roles:
+    - name: f4-devops
+      description: F4 platform team — full access to service namespaces
+      policies:
+        - p, proj:services:f4-devops, applications, *, services/*, allow
+      groups:
+        - f4-devops
+    - name: f2-deploy
+      description: F2 data team — sync their own services
+      policies:
+        - p, proj:services:f2-deploy, applications, sync, services/f2-*, allow
+        - p, proj:services:f2-deploy, applications, get, services/*, allow
+      groups:
+        - f2-team
+    - name: f3-deploy
+      description: F3 application team — sync their own services
+      policies:
+        - p, proj:services:f3-deploy, applications, sync, services/f3-*, allow
+        - p, proj:services:f3-deploy, applications, get, services/*, allow
+      groups:
+        - f3-team
+    - name: readonly
+      description: Read-only for all sub-groups
+      policies:
+        - p, proj:services:readonly, applications, get, services/*, allow
+      groups:
+        - f1-team

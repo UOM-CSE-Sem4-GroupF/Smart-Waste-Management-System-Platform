@@ -28,12 +28,10 @@ data:
     set -e
 
     EMQX_API="http://emqx.messaging.svc.cluster.local:18083/api/v5"
-    EMQX_AUTH="admin:swms-emqx-dev-2026"
+    EMQX_AUTH="${DASHBOARD_USER}:${DASHBOARD_PASS}"
     KAFKA_HOST="kafka.messaging.svc.cluster.local:9092"
 
-    # Kafka SASL credentials (same as in Vault secret/swms/kafka)
-    KAFKA_USER="user1"
-    KAFKA_PASS="QA7aKGtPHV"
+    # Kafka SASL credentials (injected via env)
 
     # Helper to call EMQX Management API
     api_call() {
@@ -65,19 +63,19 @@ data:
 
     # F1 ESP32 devices
     api_call POST "/authentication/password_based:built_in_database/users" \
-      '{"user_id":"sensor-device","password":"swms-sensor-dev-2026","is_superuser":false}' \
+      "{\"user_id\":\"sensor-device\",\"password\":\"${SENSOR_PASS}\",\"is_superuser\":false}" \
       2>/dev/null || echo "  ℹ️  sensor-device user may already exist."
     echo "  ✅ sensor-device created."
 
     # Raspberry Pi edge gateway (Node-RED)
     api_call POST "/authentication/password_based:built_in_database/users" \
-      '{"user_id":"edge-gateway","password":"swms-edge-dev-2026","is_superuser":false}' \
+      "{\"user_id\":\"edge-gateway\",\"password\":\"${EDGE_PASS}\",\"is_superuser\":false}" \
       2>/dev/null || echo "  ℹ️  edge-gateway user may already exist."
     echo "  ✅ edge-gateway created."
 
     # F1 admin for manual testing
     api_call POST "/authentication/password_based:built_in_database/users" \
-      '{"user_id":"f1-admin","password":"swms-f1-admin-2026","is_superuser":true}' \
+      "{\"user_id\":\"f1-admin\",\"password\":\"${ADMIN_PASS}\",\"is_superuser\":true}" \
       2>/dev/null || echo "  ℹ️  f1-admin user may already exist."
     echo "  ✅ f1-admin created."
 
@@ -165,16 +163,16 @@ data:
     echo ""
     echo " MQTT Credentials (for F1 team):"
     echo "   Broker:    <minikube-ip>:31883"
-    echo "   User/Pass: sensor-device / swms-sensor-dev-2026"
-    echo "   User/Pass: edge-gateway  / swms-edge-dev-2026"
-    echo "   Test user: f1-admin      / swms-f1-admin-2026"
+    echo "   User:      sensor-device (Check Vault secret/swms/emqx)"
+    echo "   User:      edge-gateway  (Check Vault secret/swms/emqx)"
+    echo "   Test user: f1-admin      (Check Vault secret/swms/emqx)"
     echo ""
     echo " Kafka Bridge Rules:"
     echo "   sensors/#  → Kafka waste.bin.telemetry"
     echo "   vehicles/# → Kafka waste.vehicle.location"
     echo ""
     echo " Dashboard: http://localhost:31083"
-    echo "   User: admin / swms-emqx-dev-2026"
+    echo "   User: ${DASHBOARD_USER} / (Check Vault secret/swms/emqx)"
     echo "======================================================"
 
 ---
@@ -217,6 +215,41 @@ spec:
           env:
             - name: HOME
               value: "/tmp"
+            - name: DASHBOARD_USER
+              valueFrom:
+                secretKeyRef:
+                  name: emqx-credentials
+                  key: default-username
+            - name: DASHBOARD_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: emqx-credentials
+                  key: default-password
+            - name: SENSOR_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: emqx-credentials
+                  key: sensor-password
+            - name: EDGE_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: emqx-credentials
+                  key: edge-password
+            - name: ADMIN_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: emqx-credentials
+                  key: admin-password
+            - name: KAFKA_USER
+              valueFrom:
+                secretKeyRef:
+                  name: kafka-user-passwords
+                  key: client-username
+            - name: KAFKA_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: kafka-user-passwords
+                  key: client-passwords
           resources:
             requests:
               memory: 32Mi

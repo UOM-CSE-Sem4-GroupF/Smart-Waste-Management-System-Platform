@@ -1,0 +1,15 @@
+# F2 Application Services (DigitalOcean)
+# PostgreSQL Waste DB
+# Namespace: waste-dev
+
+auth:
+  database: waste_management
+  username: waste_admin
+  password: waste_admin_password
+
+primary:
+  persistence:
+    storageClass: do-block-storage
+  initdb:
+    # Points to the ConfigMap created by Terraform
+    scriptsConfigMap: postgres-init-scripts

@@ -1,0 +1,133 @@
+# ── Identity ──────────────────────────────────────────────────────────────────
+replicaCount: 1
+
+nameOverride: ""
+fullnameOverride: ""
+
+# ── Image ─────────────────────────────────────────────────────────────────────
+image:
+  repository: ghcr.io/uom-cse-sem4-groupf/base-service
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# ── Service ───────────────────────────────────────────────────────────────────
+service:
+  type: ClusterIP
+  port: 3000
+
+# ── Resource Limits ───────────────────────────────────────────────────────────
+# Always set both requests AND limits. Requests = guaranteed, Limits = ceiling.
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# ── Health Probes ─────────────────────────────────────────────────────────────
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /health
+    port: 3000
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /ready
+    port: 3000
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  failureThreshold: 3
+
+# ── Horizontal Pod Autoscaler ─────────────────────────────────────────────────
+hpa:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+# ── Persistence ───────────────────────────────────────────────────────────────
+persistence:
+  enabled: false
+  storageClass: do-block-storage
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi
+
+# ── ServiceAccount ────────────────────────────────────────────────────────────
+# Every service gets its own identity. Never use the 'default' service account.
+serviceAccount:
+  create: true
+  annotations: {}   # e.g. iam.gke.io/gcp-service-account for Workload Identity
+
+# ── Security Context ──────────────────────────────────────────────────────────
+# Industry standard: containers MUST NOT run as root.
+# Drop all Linux capabilities — add back only what the app genuinely needs.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  capabilities:
+    drop:
+      - ALL
+
+# ── Pod Disruption Budget ─────────────────────────────────────────────────────
+# Prevents the cluster from taking down ALL pods during node maintenance.
+podDisruptionBudget:
+  enabled: false        # Enable for production (requires replicaCount >= 2)
+  minAvailable: 1       # Keep at least 1 pod alive during drains
+
+# ── Network Policy ────────────────────────────────────────────────────────────
+# Default-deny all ingress. Only allow traffic from Kong gateway namespace.
+networkPolicy:
+  enabled: false        # Enable per service once namespaces are labelled
+  ingressFromNamespaces:
+    - gateway           # Kong API gateway namespace
+    - monitoring        # Prometheus scraping
+
+# ── Prometheus ServiceMonitor ─────────────────────────────────────────────────
+# Automatically registers this service as a Prometheus scrape target.
+serviceMonitor:
+  enabled: false        # Enable when kube-prometheus-stack is deployed
+  path: /metrics
+  interval: 30s
+  scrapeTimeout: 10s
+
+# ── External Secrets (Vault via ESO) ─────────────────────────────────────────
+# Automatically syncs secrets from HashiCorp Vault into a Kubernetes Secret.
+externalSecret:
+  enabled: false
+  refreshInterval: "1h"
+  vaultPath: ""         # e.g. swms/bin-status-service
+  secretStoreName: vault-backend
+  secretStoreKind: ClusterSecretStore
+  # List each Vault key → Kubernetes secret key mapping:
+  # data:
+  #   - secretKey: DB_PASSWORD
+  #     remoteRef:
+  #       key: swms/bin-status-service
+  #       property: db_password
+  data: []
+
+# ── Environment Variables ─────────────────────────────────────────────────────
+# Plain (non-secret) config values injected via ConfigMap.
+env: {}
+
+# ── Extra Volume Mounts ───────────────────────────────────────────────────────
+# Useful for tmp dirs when readOnlyRootFilesystem=true (app needs a write dir).
+extraVolumeMounts: []
+extraVolumes: []
+

@@ -1,0 +1,37 @@
+# Group F — Smart Waste Management System
+# AuthorizationPolicy for Flink Processor
+# Owner: F4 Platform Team
+
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: flink-processor-allow
+  namespace: waste-dev
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: flink-processor
+  action: ALLOW
+  rules:
+    - to:
+        - operation:
+            methods: ["POST", "GET"] # Allow telemetry pushes and DB queries
+      from:
+        - source:
+            namespaces: ["messaging", "waste-dev"]
+---
+# Allow Flink to talk to external services (if needed) or other internal ones
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-internal-egress
+  namespace: waste-dev
+spec:
+  action: ALLOW
+  rules:
+    - to:
+        - operation:
+            hosts: 
+              - "kafka.messaging.svc.cluster.local"
+              - "postgres-waste-postgresql.waste-dev.svc.cluster.local"
+              - "influxdb.waste-dev.svc.cluster.local"

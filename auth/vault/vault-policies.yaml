@@ -47,7 +47,7 @@ data:
     done
     echo "  ✅ Vault is ready and unsealed."
 
-    # Enable set -e AFTER the wait loop to avoid premature exit on curl non-zero
+    # Enable set -e AFTER the wait loop to avoid premature exit on non-zero
     set -e
 
     # ── Enable KV v2 secrets engine ──────────────────────────
@@ -80,7 +80,29 @@ data:
       keycloak_db_password="swms-kc-dev-2026" \
       postgres_password="swms-pg-dev-2026" \
       keycloak_db_url="jdbc:postgresql://keycloak-postgresql.auth.svc.cluster.local:5432/bitnami_keycloak"
-    echo "  ✅ PostgreSQL secrets stored."
+    echo "  ✅ PostgreSQL auth secrets stored."
+
+    # ── Seed PostgreSQL Waste DB secrets ──────────────────────
+    echo "[3d/6] Seeding secrets at secret/swms/postgres-waste..."
+    vault kv put secret/swms/postgres-waste \
+      password="waste_admin_password"
+    echo "  ✅ PostgreSQL Waste DB secrets stored."
+
+    # ── Seed InfluxDB secrets ─────────────────────────────────
+    echo "[3e/6] Seeding secrets at secret/swms/influxdb..."
+    vault kv put secret/swms/influxdb \
+      token="my-super-token"
+    echo "  ✅ InfluxDB secrets stored."
+
+    # ── Seed EMQX secrets ─────────────────────────────────────
+    echo "[3f/6] Seeding secrets at secret/swms/emqx..."
+    vault kv put secret/swms/emqx \
+      dashboard_username="admin" \
+      dashboard_password="swms-emqx-dev-2026" \
+      sensor_password="swms-sensor-dev-2026" \
+      edge_password="swms-edge-dev-2026" \
+      admin_password="swms-f1-admin-2026"
+    echo "  ✅ EMQX secrets stored."
 
     # ── Write Vault Policies ──────────────────────────────────
     echo "[4/6] Writing access policies..."
@@ -114,6 +136,14 @@ data:
     }
     EOF
     echo "  ✅ Policy 'keycloak-service' created."
+
+    # ESO service: read access to all secrets to sync them
+    vault policy write eso-service - <<EOF
+    path "secret/data/swms/*" {
+      capabilities = ["read"]
+    }
+    EOF
+    echo "  ✅ Policy 'eso-service' created."
 
     # ── Enable Kubernetes Auth Method ─────────────────────────
     echo "[5/6] Enabling Kubernetes auth method..."
@@ -150,6 +180,14 @@ data:
       policies="keycloak-service" \
       token_ttl="2h"
     echo "  ✅ Role 'keycloak-service' created."
+
+    # eso-service: for External Secrets Operator
+    vault write auth/kubernetes/role/eso-service \
+      bound_service_account_names="external-secrets" \
+      bound_service_account_namespaces="eso" \
+      policies="eso-service" \
+      token_ttl="2h"
+    echo "  ✅ Role 'eso-service' created."
 
     echo ""
     echo "======================================================"

@@ -14,4 +14,9 @@ metadata:
     project: group-f-swms
     managed-by: f4-platform
 data:
-  waste-management-realm.json: |
+  # Populated at deploy time by setup-local.sh:
+  #   kubectl create configmap keycloak-realm-config \
+  #     --from-file=waste-management-realm.json=./auth/keycloak/realm-export.json
+  # This placeholder keeps kubeconform happy; the real content is in realm-export.json.
+  waste-management-realm.json: |-
+    {}

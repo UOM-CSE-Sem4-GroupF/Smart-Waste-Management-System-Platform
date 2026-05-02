@@ -1,0 +1,52 @@
+{{- if .Values.networkPolicy.enabled -}}
+# NetworkPolicy: default-deny all ingress, then explicitly allow from trusted namespaces.
+# This implements a Zero-Trust network posture — each service only accepts
+# traffic from pods it explicitly trusts.
+#
+# To apply: label each allowed namespace:
+#   kubectl label namespace gateway  swms-network-zone=gateway
+#   kubectl label namespace monitoring swms-network-zone=monitoring
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "base-service.fullname" . }}-netpol
+  labels:
+    {{- include "base-service.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "base-service.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    {{- range .Values.networkPolicy.ingressFromNamespaces }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              swms-network-zone: {{ . }}
+      ports:
+        - protocol: TCP
+          port: {{ $.Values.service.port }}
+    {{- end }}
+  egress:
+    # Allow DNS resolution (CoreDNS runs on port 53)
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Allow all egress to the same namespace (intra-service communication)
+    - to:
+        - podSelector: {}
+    # Allow egress to messaging namespace (Kafka)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              swms-network-zone: messaging
+    # Allow egress to auth namespace (Vault, Keycloak)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              swms-network-zone: auth
+{{- end }}

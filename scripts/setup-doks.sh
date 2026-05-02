@@ -264,6 +264,79 @@ kubectl wait --for=condition=complete job/emqx-bootstrap -n messaging --timeout=
   && log_success "EMQX bootstrap complete. MQTT ↔ Kafka bridge live." \
   || log_warn "Bootstrap still running. Check: kubectl logs -n messaging -l job-name=emqx-bootstrap"
 
+# --- Step 12: Deploy PostgreSQL (waste-dev namespace — managed by F4, owned by F2) ---
+log_step "Step 12: Deploying PostgreSQL (waste-dev namespace)"
+
+if helm status postgres-waste -n waste-dev &>/dev/null; then
+  log_warn "PostgreSQL already deployed — upgrading..."
+  helm upgrade postgres-waste oci://registry-1.docker.io/bitnamicharts/postgresql \
+    --version "15.5.3" \
+    --namespace waste-dev \
+    --values ./waste-dev/postgres-waste/values-dev.yaml \
+    --wait --timeout 5m
+else
+  log_info "Installing PostgreSQL..."
+  helm install postgres-waste oci://registry-1.docker.io/bitnamicharts/postgresql \
+    --version "15.5.3" \
+    --namespace waste-dev \
+    --values ./waste-dev/postgres-waste/values-dev.yaml \
+    --wait --timeout 5m
+fi
+log_success "PostgreSQL deployed."
+log_info "  F2 access: kubectl port-forward svc/postgres-waste-postgresql -n waste-dev 5432:5432"
+
+# --- Step 13: Deploy InfluxDB (waste-dev namespace — managed by F4, owned by F2) ---
+log_step "Step 13: Deploying InfluxDB (waste-dev namespace)"
+
+if helm status influxdb -n waste-dev &>/dev/null; then
+  log_warn "InfluxDB already deployed — upgrading..."
+  helm upgrade influxdb oci://registry-1.docker.io/bitnamicharts/influxdb \
+    --version "5.2.4" \
+    --namespace waste-dev \
+    --values ./waste-dev/influxdb/values-dev.yaml \
+    --wait --timeout 5m
+else
+  log_info "Installing InfluxDB..."
+  helm install influxdb oci://registry-1.docker.io/bitnamicharts/influxdb \
+    --version "5.2.4" \
+    --namespace waste-dev \
+    --values ./waste-dev/influxdb/values-dev.yaml \
+    --wait --timeout 5m
+fi
+log_success "InfluxDB deployed."
+log_info "  F2 access: kubectl port-forward svc/influxdb -n waste-dev 8086:8086"
+
+# --- Step 14: Deploy Prometheus + Grafana (monitoring namespace) ---
+log_step "Step 14: Deploying Prometheus + Grafana (monitoring namespace)"
+
+if ! helm repo list 2>/dev/null | grep -q "prometheus-community"; then
+  log_info "Adding Prometheus Community Helm repo..."
+  helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+  helm repo update
+else
+  log_info "Prometheus Community Helm repo already added."
+fi
+
+if helm status monitoring -n monitoring &>/dev/null; then
+  log_warn "Monitoring stack already deployed — upgrading..."
+  helm upgrade monitoring prometheus-community/kube-prometheus-stack \
+    --namespace monitoring \
+    --values ./monitoring/values.yaml \
+    --values ./monitoring/values-doks.yaml \
+    --wait --timeout 10m
+else
+  log_info "Installing kube-prometheus-stack (Prometheus + Grafana + AlertManager)..."
+  kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
+  helm install monitoring prometheus-community/kube-prometheus-stack \
+    --namespace monitoring \
+    --values ./monitoring/values.yaml \
+    --values ./monitoring/values-doks.yaml \
+    --wait --timeout 10m
+fi
+log_success "Monitoring stack deployed."
+log_info "  Access Grafana: kubectl port-forward svc/monitoring-grafana -n monitoring 3000:80"
+log_info "  Grafana login:  admin / admin"
+
 # --- Final: Status summary ---
 log_step "Final: Deployment complete"
 
@@ -296,6 +369,14 @@ echo "    Vault UI:        kubectl port-forward svc/vault -n auth 8200:8200"
 echo "                     → http://localhost:8200  (token: swms-vault-dev-root-token)"
 echo "    EMQX dashboard:  kubectl port-forward svc/emqx -n messaging 18083:18083"
 echo "                     → http://localhost:18083  (admin / swms-emqx-dev-2026)"
+echo "    Grafana:         kubectl port-forward svc/monitoring-grafana -n monitoring 3000:80"
+echo "                     → http://localhost:3000  (admin / admin)"
+echo ""
+echo "  F2/F3 local development — connect to DOKS services:"
+echo "    KAFKA_BROKERS=<kafka-lb-ip>:9094  (external LoadBalancer, see above)"
+echo "    KEYCLOAK_URL=http://localhost:8080 (via port-forward)"
+echo "    POSTGRES_HOST=localhost:5432       (kubectl port-forward svc/postgres-waste-postgresql -n waste-dev 5432:5432)"
+echo "    INFLUXDB_URL=http://localhost:8086 (kubectl port-forward svc/influxdb -n waste-dev 8086:8086)"
 echo ""
 echo "  EMQX MQTT Credentials (F1 team):"
 echo "    sensor-device / swms-sensor-dev-2026  (ESP32)"

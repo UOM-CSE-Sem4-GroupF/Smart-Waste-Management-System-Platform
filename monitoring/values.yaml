@@ -1,0 +1,130 @@
+# values.yaml
+# Helm configuration for kube-prometheus-stack
+# Deployed in the monitoring namespace
+# F4 Platform Team — Smart Waste Management System
+
+grafana:
+  enabled: true
+  adminPassword: "admin"  # Change this in production — use Vault secret
+
+  # Grafana dashboard settings
+  defaultDashboardsEnabled: true
+  defaultDashboardsTimezone: "Asia/Colombo"
+
+  # Grafana service settings
+  service:
+    type: ClusterIP
+    port: 80
+
+  # Persistent storage for dashboards
+  persistence:
+    enabled: true
+    size: 1Gi
+
+prometheus:
+  enabled: true
+
+  prometheusSpec:
+    # How long to keep metrics data
+    retention: 30d
+
+    # Storage for metrics
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+
+    # Scrape interval — how often Prometheus checks services
+    scrapeInterval: "30s"
+    evaluationInterval: "30s"
+
+alertmanager:
+  enabled: true
+
+  alertmanagerSpec:
+    # How long to wait before re-sending same alert
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 1Gi
+
+# Kubernetes component monitoring
+kubeStateMetrics:
+  enabled: true   # monitors pod status, deployments etc.
+
+nodeExporter:
+  enabled: true   # monitors CPU, memory, disk on each node
+
+# Waste Management Custom Alert Rules
+additionalPrometheusRulesMap:
+  waste-management-alerts:
+    groups:
+      - name: waste.critical
+        rules:
+          # Alert: Bin is 100% full but no lorry is coming
+          - alert: BinOverflow
+            expr: waste_bins_urgent_total{status="critical"} > 0
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Bin overflow detected"
+              description: "A bin is critically full with no active collection job."
+
+          # Alert: Kafka is falling behind processing sensor data
+          - alert: KafkaConsumerLagHigh
+            expr: kafka_consumer_lag > 10000
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Kafka consumer lag too high"
+              description: "F2 stream processing is falling behind. Lag is above 10,000 messages."
+
+          # Alert: A service pod is crash looping
+          - alert: PodCrashLooping
+            expr: rate(kube_pod_container_status_restarts_total{namespace=~"waste-.*"}[15m]) > 0
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Pod is crash looping"
+              description: "A pod in the waste management namespace is repeatedly crashing."
+
+      - name: waste.warning
+        rules:
+          # Alert: No sensor readings from a zone for 30+ minutes
+          - alert: ZoneSensorOutage
+            expr: time() - waste_zone_last_reading_timestamp > 1800
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Zone sensor outage"
+              description: "No sensor readings received from a zone for over 30 minutes."
+
+          # Alert: No driver found for a job — needs supervisor
+          - alert: CollectionJobEscalated
+            expr: waste_collection_jobs_active{status="escalated"} > 0
+            for: 1m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Collection job escalated"
+              description: "A collection job has been escalated — no driver found after retries."
+
+          # Alert: Lorry went off its planned route
+          - alert: VehicleDeviation
+            expr: waste_vehicle_deviation_meters > 500
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Vehicle off route"
+              description: "A lorry has deviated more than 500m from its planned collection route."

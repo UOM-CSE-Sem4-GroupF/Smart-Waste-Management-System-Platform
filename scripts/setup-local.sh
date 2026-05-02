@@ -134,6 +134,7 @@ if helm status kafka -n messaging &>/dev/null; then
 else
   log_info "Installing Kafka (OCI chart from Bitnami registry)..."
   helm install kafka oci://registry-1.docker.io/bitnamicharts/kafka \
+    --version "$KAFKA_CHART_VERSION" \
     --namespace messaging \
     --values ./messaging/kafka/values-dev.yaml \
     --wait \
@@ -158,7 +159,7 @@ kubectl wait --for=condition=complete job/kafka-topic-init \
   -n messaging \
   --timeout=120s
 
-log_success "All 13 Kafka topics created."
+log_success "All 11 Kafka topics created."
 
 # --- Step 7: Deploy Kong API Gateway ---
 log_step "Step 7: Deploying Kong (gateway namespace)"
@@ -183,30 +184,8 @@ else
   log_success "Kong deployed."
 fi
 
-# --- Step 8: Deploy Keycloak ---
-log_step "Step 8: Deploying Keycloak (auth namespace)"
-
-# Create the realm ConfigMap from realm-export.json
-log_info "Creating Keycloak realm ConfigMap..."
-kubectl create configmap keycloak-realm-config \
-  --from-file=waste-management-realm.json=./auth/keycloak/realm-export.json \
-  -n auth \
-  --dry-run=client -o yaml | kubectl apply -f -
-
-if helm status keycloak -n auth &>/dev/null; then
-  log_warn "Keycloak already deployed — skipping install."
-else
-  log_info "Installing Keycloak (OCI chart from Bitnami registry)..."
-  helm install keycloak oci://registry-1.docker.io/bitnamicharts/keycloak \
-    --namespace auth \
-    --values ./auth/keycloak/values-dev.yaml \
-    --wait \
-    --timeout 10m
-  log_success "Keycloak deployed."
-fi
-
-# --- Step 9: Deploy HashiCorp Vault ---
-log_step "Step 9: Deploying HashiCorp Vault (auth namespace)"
+# --- Step 8: Deploy HashiCorp Vault ---
+log_step "Step 8: Deploying HashiCorp Vault (auth namespace)"
 
 # Add the hashicorp Helm repo (idempotent)
 if ! helm repo list 2>/dev/null | grep -q "hashicorp"; then
@@ -238,6 +217,58 @@ kubectl wait --for=condition=complete job/vault-bootstrap -n auth --timeout=120s
   && log_success "Vault bootstrap complete. All secrets seeded." \
   || log_warn "Bootstrap job still running. Check: kubectl logs -n auth -l job-name=vault-bootstrap"
 
+# --- Step 8b: Deploy External Secrets Operator ---
+log_step "Step 8b: Deploying External Secrets Operator (eso namespace)"
+
+if ! helm repo list 2>/dev/null | grep -q "external-secrets"; then
+  log_info "Adding External Secrets Helm repo..."
+  helm repo add external-secrets https://charts.external-secrets.io
+  helm repo update
+else
+  log_info "External Secrets Helm repo already added."
+fi
+
+if helm status external-secrets -n eso &>/dev/null; then
+  log_warn "External Secrets Operator already deployed — skipping install."
+else
+  log_info "Installing External Secrets Operator..."
+  kubectl create namespace eso --dry-run=client -o yaml | kubectl apply -f -
+  helm install external-secrets external-secrets/external-secrets \
+    --namespace eso \
+    --set installCRDs=true \
+    --wait \
+    --timeout 5m
+  log_success "External Secrets Operator deployed."
+fi
+
+log_info "Applying Vault ClusterSecretStore..."
+kubectl apply -f ./infrastructure/eso/cluster-secret-store.yaml
+
+# --- Step 9: Deploy Keycloak ---
+log_step "Step 9: Deploying Keycloak (auth namespace)"
+
+# Create the realm ConfigMap from realm-export.json
+log_info "Creating Keycloak realm ConfigMap..."
+kubectl create configmap keycloak-realm-config \
+  --from-file=waste-management-realm.json=./auth/keycloak/realm-export.json \
+  -n auth \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+log_info "Applying Keycloak ExternalSecret..."
+kubectl apply -f ./auth/keycloak/external-secret.yaml
+
+if helm status keycloak -n auth &>/dev/null; then
+  log_warn "Keycloak already deployed — skipping install."
+else
+  log_info "Installing Keycloak (OCI chart from Bitnami registry)..."
+  helm install keycloak oci://registry-1.docker.io/bitnamicharts/keycloak \
+    --namespace auth \
+    --values ./auth/keycloak/values-dev.yaml \
+    --wait \
+    --timeout 10m
+  log_success "Keycloak deployed."
+fi
+
 # --- Step 10: Deploy EMQX MQTT Broker ---
 log_step "Step 10: Deploying EMQX MQTT Broker (messaging namespace)"
 
@@ -249,6 +280,9 @@ if ! helm repo list 2>/dev/null | grep -q "emqx"; then
 else
   log_info "EMQX Helm repo already added."
 fi
+
+log_info "Applying EMQX ExternalSecret..."
+kubectl apply -f ./messaging/emqx/external-secret.yaml
 
 if helm status emqx -n messaging &>/dev/null; then
   log_warn "EMQX already deployed — skipping install."
@@ -271,6 +305,133 @@ kubectl wait --for=condition=complete job/emqx-bootstrap -n messaging --timeout=
   && log_success "EMQX bootstrap complete. MQTT ↔ Kafka bridge is live." \
   || log_warn "Bootstrap job still running. Check: kubectl logs -n messaging -l job-name=emqx-bootstrap"
 
+# --- Step 11: Deploy Argo CD + Image Updater ---
+log_step "Step 11: Deploying Argo CD + Image Updater (cicd namespace)"
+
+# Add the official Argo CD Helm repo (idempotent)
+if ! helm repo list 2>/dev/null | grep -q "^argo\s"; then
+  log_info "Adding Argo CD Helm repo..."
+  helm repo add argo https://argoproj.github.io/argo-helm
+  helm repo update
+else
+  log_info "Argo Helm repo already added."
+fi
+
+# Install / upgrade Argo CD
+if helm status argocd -n cicd &>/dev/null; then
+  log_warn "Argo CD already deployed — upgrading..."
+  helm upgrade argocd argo/argo-cd \
+    --namespace cicd \
+    --values ./cicd/argocd/values-dev.yaml \
+    --wait \
+    --timeout 10m
+else
+  log_info "Installing Argo CD..."
+  helm install argocd argo/argo-cd \
+    --namespace cicd \
+    --values ./cicd/argocd/values-dev.yaml \
+    --wait \
+    --timeout 10m
+  log_success "Argo CD deployed."
+fi
+
+# Install / upgrade Argo CD Image Updater
+if helm status argocd-image-updater -n cicd &>/dev/null; then
+  log_warn "Argo CD Image Updater already deployed — upgrading..."
+  helm upgrade argocd-image-updater argo/argocd-image-updater \
+    --namespace cicd \
+    --values ./cicd/argocd/image-updater-values.yaml \
+    --wait \
+    --timeout 5m
+else
+  log_info "Installing Argo CD Image Updater..."
+  helm install argocd-image-updater argo/argocd-image-updater \
+    --namespace cicd \
+    --values ./cicd/argocd/image-updater-values.yaml \
+    --wait \
+    --timeout 5m
+  log_success "Argo CD Image Updater deployed."
+fi
+
+# Apply AppProjects and bootstrap root Application
+log_info "Applying Argo CD AppProjects..."
+kubectl apply -n cicd -f ./cicd/projects/
+
+log_info "Bootstrapping App-of-Apps root Application..."
+kubectl apply -n cicd -f ./cicd/bootstrap/root-app.yaml
+
+log_info "Waiting for Argo CD server to be ready..."
+kubectl wait --for=condition=available deployment/argocd-server \
+  -n cicd \
+  --timeout=120s
+
+ARGOCD_PASSWORD=$(kubectl -n cicd get secret argocd-initial-admin-secret \
+  -o jsonpath='{.data.password}' | base64 -d 2>/dev/null || echo "<not available yet>")
+
+log_success "Argo CD is live at http://localhost:30800"
+log_info  "  Admin user:     admin"
+log_info  "  Admin password: ${ARGOCD_PASSWORD}"
+log_info  "  Change password: argocd account update-password --current-password '${ARGOCD_PASSWORD}'"
+log_info  ""
+log_info  "NOTE: Image Updater needs a GHCR pull secret and SSH deploy key to work."
+log_info  "      See cicd/README.md → 'Prerequisites for Image Updater'."
+
+# --- Step 12: Deploy PostgreSQL (waste-dev namespace) ---
+log_step "Step 12: Deploying PostgreSQL (waste-dev namespace)"
+
+if helm status postgres-waste -n waste-dev &>/dev/null; then
+  log_warn "PostgreSQL already deployed — skipping install."
+else
+  log_info "Installing PostgreSQL..."
+  helm install postgres-waste oci://registry-1.docker.io/bitnamicharts/postgresql \
+    --version "15.5.3" \
+    --namespace waste-dev \
+    --values ./waste-dev/postgres-waste/values-dev.yaml \
+    --wait \
+    --timeout 5m
+  log_success "PostgreSQL deployed."
+fi
+
+# --- Step 13: Deploy InfluxDB (waste-dev namespace) ---
+log_step "Step 13: Deploying InfluxDB (waste-dev namespace)"
+
+if helm status influxdb -n waste-dev &>/dev/null; then
+  log_warn "InfluxDB already deployed — skipping install."
+else
+  log_info "Installing InfluxDB..."
+  helm install influxdb oci://registry-1.docker.io/bitnamicharts/influxdb \
+    --version "5.2.4" \
+    --namespace waste-dev \
+    --values ./waste-dev/influxdb/values-dev.yaml \
+    --wait \
+    --timeout 5m
+  log_success "InfluxDB deployed."
+fi
+
+# --- Step 14: Deploy Prometheus + Grafana (monitoring namespace) ---
+log_step "Step 14: Deploying Prometheus + Grafana (monitoring namespace)"
+
+if ! helm repo list 2>/dev/null | grep -q "prometheus-community"; then
+  log_info "Adding Prometheus Community Helm repo..."
+  helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+  helm repo update
+else
+  log_info "Prometheus Community Helm repo already added."
+fi
+
+if helm status monitoring -n monitoring &>/dev/null; then
+  log_warn "Monitoring stack already deployed — skipping install."
+else
+  log_info "Installing kube-prometheus-stack (Prometheus + Grafana + AlertManager)..."
+  kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
+  helm install monitoring prometheus-community/kube-prometheus-stack \
+    --namespace monitoring \
+    --values ./monitoring/values.yaml \
+    --wait \
+    --timeout 10m
+  log_success "Monitoring stack deployed."
+fi
+
 # --- Final: Cluster status ---
 log_step "Final: Cluster status"
 
@@ -283,37 +444,33 @@ echo "================================================================"
 echo "  Setup complete!"
 echo ""
 echo "  Access URLs (NodePort — works directly after minikube start):"
-echo "  Kafka:        kafka.messaging.svc.cluster.local:9092  (internal)"
-echo "  Kong Proxy:   http://localhost:30080  (NodePort)"
-echo "  Keycloak:     http://localhost:30180  (NodePort)"
-echo "  Vault UI:     http://localhost:30820  (NodePort)"
-echo "  EMQX MQTT:    <minikube-ip>:31883  (NodePort — for ESP32/Node-RED)"
+echo "  Kafka:          kafka.messaging.svc.cluster.local:9092  (internal)"
+echo "  Kong Proxy:     http://localhost:30080  (NodePort)"
+echo "  Keycloak:       http://localhost:30180  (NodePort)"
+echo "  Vault UI:       http://localhost:30820  (NodePort)"
+echo "  EMQX MQTT:      <minikube-ip>:31883  (NodePort — for ESP32/Node-RED)"
 echo "  EMQX Dashboard: http://localhost:31083  (NodePort)"
+echo "  Argo CD:        http://localhost:30800  (NodePort)"
+echo "  PostgreSQL:     localhost:5432  (waste-dev, via cluster-internal DNS)"
+echo "  InfluxDB:       http://localhost:8086  (waste-dev)"
+echo "  Grafana:        kubectl port-forward svc/monitoring-grafana -n monitoring 3000:80"
+echo "                  → http://localhost:3000  (admin / admin)"
 echo ""
-echo "  Keycloak Admin:"
-echo "    URL:      http://localhost:30180/admin"
-echo "    User:     admin / swms-admin-dev-2026"
+echo "  Keycloak Test Users:"
+echo "    admin@swms-dev.local      / swms-admin-dev      (admin)"
+echo "    supervisor@swms-dev.local / swms-supervisor-dev (supervisor)"
+echo "    operator@swms-dev.local   / swms-operator-dev   (fleet-operator)"
+echo "    driver@swms-dev.local     / swms-driver-dev     (driver)"
 echo ""
-echo "  Vault:"
-echo "    UI:       http://localhost:30820"
-echo "    Token:    swms-vault-dev-root-token"
-echo ""
-echo "  EMQX MQTT Credentials (for F1 team):"
-echo "    sensor-device / swms-sensor-dev-2026  (ESP32 devices)"
-echo "    edge-gateway  / swms-edge-dev-2026    (Node-RED RPi gateway)"
-echo "    f1-admin      / swms-f1-admin-2026    (testing)"
-echo "    Dashboard:    admin / swms-emqx-dev-2026"
-echo ""
-echo "  Kafka Bridge Rules:"
+echo "  Kafka Bridge:"
 echo "    sensors/#  → waste.bin.telemetry"
 echo "    vehicles/# → waste.vehicle.location"
 echo ""
-echo "  Test Users (Keycloak):"
-echo "    supervisor@swms-dev.local / swms-supervisor-dev"
-echo "    driver@swms-dev.local     / swms-driver-dev"
+echo "  Argo CD:"
+echo "    URL:      http://localhost:30800  (admin / password printed in Step 11)"
 echo ""
 echo "  Next steps:"
-echo "  1. Deploy Prometheus + Grafana (monitoring/)"
-echo "  2. Deploy Argo CD (cicd/)"
+echo "  1. Create Image Updater SSH deploy key (see cicd/README.md)"
+echo "  2. Create ghcr-pull-secret in cicd namespace (see cicd/README.md)"
 echo "================================================================"
 
