@@ -15,7 +15,7 @@ spec:
   sources:
     - repoURL: registry-1.docker.io/bitnamicharts
       chart: postgresql
-      targetRevision: "15.5.3"
+      targetRevision: "18.6.2"
       helm:
         releaseName: postgres-waste
         valueFiles:
