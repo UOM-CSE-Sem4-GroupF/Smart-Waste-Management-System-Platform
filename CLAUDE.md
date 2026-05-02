@@ -232,5 +232,11 @@ Configured in `messaging/emqx/emqx-bootstrap.yaml`. Current bridge:
 | EMQX dashboard | `admin` / `swms-emqx-dev-2026` |
 | MQTT sensor device | `sensor-device` / `swms-sensor-dev-2026` |
 | MQTT edge gateway | `edge-gateway` / `swms-edge-dev-2026` |
+| Keycloak test admin | `admin@swms-dev.local` / `swms-admin-dev` |
 | Keycloak test supervisor | `supervisor@swms-dev.local` / `swms-supervisor-dev` |
+| Keycloak test operator | `operator@swms-dev.local` / `swms-operator-dev` |
 | Keycloak test driver | `driver@swms-dev.local` / `swms-driver-dev` |
+| PostgreSQL | `waste_admin` / `waste_admin_password` (db: `waste_management`) |
+| InfluxDB | `admin` / `admin12345` (org: `waste-org`) |
+| Grafana | `admin` / `admin` |
+| Keycloak internal service | client `waste-api-internal` / `internal-service-secret-dev` |

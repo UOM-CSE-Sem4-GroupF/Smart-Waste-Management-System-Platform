@@ -1,0 +1,29 @@
+# monitoring/values-doks.yaml
+# DigitalOcean DOKS overrides for kube-prometheus-stack
+# Layer on top of values.yaml: helm install ... -f values.yaml -f values-doks.yaml
+
+prometheus:
+  prometheusSpec:
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: do-block-storage
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+
+grafana:
+  persistence:
+    storageClassName: do-block-storage
+
+alertmanager:
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: do-block-storage
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 1Gi

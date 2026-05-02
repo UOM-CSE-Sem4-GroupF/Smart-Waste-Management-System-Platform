@@ -114,10 +114,64 @@
       "clientAuthenticatorType": "client-secret",
       "secret": "kong-client-secret-dev",
       "protocol": "openid-connect"
+    },
+    {
+      "clientId": "waste-api-internal",
+      "name": "SWMS Internal Service Account",
+      "description": "Confidential client for F2/F3 service-to-service auth (client credentials flow)",
+      "enabled": true,
+      "publicClient": false,
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "internal-service-secret-dev",
+      "protocol": "openid-connect",
+      "defaultClientScopes": [
+        "openid",
+        "roles"
+      ],
+      "optionalClientScopes": []
     }
   ],
   "identityProviders": [],
   "users": [
+    {
+      "username": "admin-user",
+      "email": "admin@swms-dev.local",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Test",
+      "lastName": "Admin",
+      "realmRoles": [
+        "admin"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "swms-admin-dev",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "operator-user",
+      "email": "operator@swms-dev.local",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Test",
+      "lastName": "Operator",
+      "realmRoles": [
+        "fleet-operator"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "swms-operator-dev",
+          "temporary": false
+        }
+      ]
+    },
     {
       "username": "test-supervisor",
       "email": "supervisor@swms-dev.local",

@@ -159,7 +159,7 @@ kubectl wait --for=condition=complete job/kafka-topic-init \
   -n messaging \
   --timeout=120s
 
-log_success "All 13 Kafka topics created."
+log_success "All 11 Kafka topics created."
 
 # --- Step 7: Deploy Kong API Gateway ---
 log_step "Step 7: Deploying Kong (gateway namespace)"
@@ -376,6 +376,62 @@ log_info  ""
 log_info  "NOTE: Image Updater needs a GHCR pull secret and SSH deploy key to work."
 log_info  "      See cicd/README.md → 'Prerequisites for Image Updater'."
 
+# --- Step 12: Deploy PostgreSQL (waste-dev namespace) ---
+log_step "Step 12: Deploying PostgreSQL (waste-dev namespace)"
+
+if helm status postgres-waste -n waste-dev &>/dev/null; then
+  log_warn "PostgreSQL already deployed — skipping install."
+else
+  log_info "Installing PostgreSQL..."
+  helm install postgres-waste oci://registry-1.docker.io/bitnamicharts/postgresql \
+    --version "15.5.3" \
+    --namespace waste-dev \
+    --values ./waste-dev/postgres-waste/values-dev.yaml \
+    --wait \
+    --timeout 5m
+  log_success "PostgreSQL deployed."
+fi
+
+# --- Step 13: Deploy InfluxDB (waste-dev namespace) ---
+log_step "Step 13: Deploying InfluxDB (waste-dev namespace)"
+
+if helm status influxdb -n waste-dev &>/dev/null; then
+  log_warn "InfluxDB already deployed — skipping install."
+else
+  log_info "Installing InfluxDB..."
+  helm install influxdb oci://registry-1.docker.io/bitnamicharts/influxdb \
+    --version "5.2.4" \
+    --namespace waste-dev \
+    --values ./waste-dev/influxdb/values-dev.yaml \
+    --wait \
+    --timeout 5m
+  log_success "InfluxDB deployed."
+fi
+
+# --- Step 14: Deploy Prometheus + Grafana (monitoring namespace) ---
+log_step "Step 14: Deploying Prometheus + Grafana (monitoring namespace)"
+
+if ! helm repo list 2>/dev/null | grep -q "prometheus-community"; then
+  log_info "Adding Prometheus Community Helm repo..."
+  helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+  helm repo update
+else
+  log_info "Prometheus Community Helm repo already added."
+fi
+
+if helm status monitoring -n monitoring &>/dev/null; then
+  log_warn "Monitoring stack already deployed — skipping install."
+else
+  log_info "Installing kube-prometheus-stack (Prometheus + Grafana + AlertManager)..."
+  kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
+  helm install monitoring prometheus-community/kube-prometheus-stack \
+    --namespace monitoring \
+    --values ./monitoring/values.yaml \
+    --wait \
+    --timeout 10m
+  log_success "Monitoring stack deployed."
+fi
+
 # --- Final: Cluster status ---
 log_step "Final: Cluster status"
 
@@ -395,37 +451,26 @@ echo "  Vault UI:       http://localhost:30820  (NodePort)"
 echo "  EMQX MQTT:      <minikube-ip>:31883  (NodePort — for ESP32/Node-RED)"
 echo "  EMQX Dashboard: http://localhost:31083  (NodePort)"
 echo "  Argo CD:        http://localhost:30800  (NodePort)"
+echo "  PostgreSQL:     localhost:5432  (waste-dev, via cluster-internal DNS)"
+echo "  InfluxDB:       http://localhost:8086  (waste-dev)"
+echo "  Grafana:        kubectl port-forward svc/monitoring-grafana -n monitoring 3000:80"
+echo "                  → http://localhost:3000  (admin / admin)"
 echo ""
-echo "  Keycloak Admin:"
-echo "    URL:      http://localhost:30180/admin"
-echo "    User:     admin / (Check Vault secret/swms/keycloak)"
+echo "  Keycloak Test Users:"
+echo "    admin@swms-dev.local      / swms-admin-dev      (admin)"
+echo "    supervisor@swms-dev.local / swms-supervisor-dev (supervisor)"
+echo "    operator@swms-dev.local   / swms-operator-dev   (fleet-operator)"
+echo "    driver@swms-dev.local     / swms-driver-dev     (driver)"
 echo ""
-echo "  Vault:"
-echo "    UI:       http://localhost:30820"
-echo "    Token:    (Check your initial root token)"
-echo ""
-echo "  EMQX MQTT Credentials (for F1 team):"
-echo "    sensor-device (ESP32 devices)"
-echo "    edge-gateway  (Node-RED RPi gateway)"
-echo "    f1-admin      (testing)"
-echo "    Dashboard:    admin / (Check Vault secret/swms/emqx)"
-echo ""
-echo "  Kafka Bridge Rules:"
+echo "  Kafka Bridge:"
 echo "    sensors/#  → waste.bin.telemetry"
 echo "    vehicles/# → waste.vehicle.location"
 echo ""
-echo "  Test Users (Keycloak):"
-echo "    supervisor@swms-dev.local / swms-supervisor-dev"
-echo "    driver@swms-dev.local     / swms-driver-dev"
-echo ""
-echo "  Argo CD Admin:"
-echo "    URL:      http://localhost:30800"
-echo "    User:     admin"
-echo "    Password: (printed above by Step 11)"
+echo "  Argo CD:"
+echo "    URL:      http://localhost:30800  (admin / password printed in Step 11)"
 echo ""
 echo "  Next steps:"
-echo "  1. Deploy Prometheus + Grafana (monitoring/)"
-echo "  2. Create Image Updater SSH deploy key (see cicd/README.md)"
-echo "  3. Create ghcr-pull-secret in cicd namespace (see cicd/README.md)"
+echo "  1. Create Image Updater SSH deploy key (see cicd/README.md)"
+echo "  2. Create ghcr-pull-secret in cicd namespace (see cicd/README.md)"
 echo "================================================================"
 

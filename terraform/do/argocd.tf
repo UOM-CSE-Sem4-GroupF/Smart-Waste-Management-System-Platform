@@ -38,7 +38,7 @@ server:
       namespace: cicd
       project: platform
       source:
-        repoURL: https://github.com/UOM-CSE-Sem4-GroupF/group-f-platform
+        repoURL: https://github.com/UOM-CSE-Sem4-GroupF/Smart-Waste-Management-System-Platform
         targetRevision: main
         path: cicd/applications
         directory:
