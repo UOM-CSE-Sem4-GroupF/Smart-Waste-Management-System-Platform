@@ -16,7 +16,6 @@ replicaCount: 1
 # ─── Image ────────────────────────────────────────────────────────
 image:
   repository: emqx/emqx
-  tag: "5.6.0"
   pullPolicy: IfNotPresent
 
 # ─── EMQX Configuration ───────────────────────────────────────────
