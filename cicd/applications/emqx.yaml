@@ -6,7 +6,8 @@
 #   Source 1: Official EMQX Helm chart
 #   Source 2: This repo ($values ref) — provides messaging/emqx/values-dev.yaml
 #
-# Chart version: 5.8.9 (image tag uses chart appVersion — emqx/emqx:5.8.9)
+# Chart version: 5.8.9 (image pinned to 5.4.1 in values-dev.yaml — Debian 11 base,
+# required for libssl1.1 which EMQX needs; 5.6+ images rebuilt on Debian 12 lack it)
 # Namespace: messaging
 #
 # NOTE: The emqx-bootstrap Job (MQTT users + Kafka bridge rules) is applied

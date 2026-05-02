@@ -14,8 +14,11 @@
 replicaCount: 1
 
 # ─── Image ────────────────────────────────────────────────────────
+# Pinned to 5.4.1 (Debian 11 / bullseye) — 5.6+ rebuilt on Debian 12 which
+# dropped libssl1.1; EMQX requires libssl.so.1.1 at runtime.
 image:
   repository: emqx/emqx
+  tag: "5.4.1"
   pullPolicy: IfNotPresent
 
 # ─── EMQX Configuration ───────────────────────────────────────────
