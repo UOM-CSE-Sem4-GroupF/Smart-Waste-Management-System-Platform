@@ -36,7 +36,7 @@ spec:
     - repoURL: registry-1.docker.io/bitnamicharts
       chart: keycloak
       # Update this version when upgrading Keycloak — match setup-local.sh
-      targetRevision: "24.4.7"
+      targetRevision: "25.2.0"
       helm:
         releaseName: keycloak
         valueFiles:
