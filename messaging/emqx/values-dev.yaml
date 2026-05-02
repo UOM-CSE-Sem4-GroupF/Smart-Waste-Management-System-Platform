@@ -21,27 +21,14 @@ image:
 
 # ─── EMQX Configuration ───────────────────────────────────────────
 emqxConfig:
-  # Dashboard credentials (provided via extraEnv)
-  
-  # Allow higher connection limits for local dev testing
   EMQX_MQTT__MAX_CONNECTIONS: "1000"
-
-  # Log level for cleaner output
   EMQX_LOG__CONSOLE__LEVEL: "info"
+  # Single-node mode — skip DNS peer discovery on fresh start
+  EMQX_CLUSTER__DISCOVERY_STRATEGY: "static"
+  EMQX_CLUSTER__STATIC__SEEDS: ""
 
-extraEnv:
-  - name: EMQX_DASHBOARD__DEFAULT_USERNAME
-    valueFrom:
-      secretKeyRef:
-        name: emqx-credentials
-        key: default-username
-  - name: EMQX_DASHBOARD__DEFAULT_PASSWORD
-    valueFrom:
-      secretKeyRef:
-        name: emqx-credentials
-        key: default-password
-  - name: ERL_FLAGS
-    value: "+MBcsbcs 512 +MHmbs 64 +MMsco true"
+# Inject ERL_FLAGS + dashboard credentials from Vault-backed secret
+envFromSecret: "emqx-credentials"
 
 # ─── Service Configuration ────────────────────────────────────────
 # Use the EMQX chart's native flat port format
