@@ -48,6 +48,8 @@ spec:
       namespace: waste-prod
     - server: https://kubernetes.default.svc
       namespace: eso
+    - server: https://kubernetes.default.svc
+      namespace: kube-system
 
   clusterResourceWhitelist:
     - group: '*'
