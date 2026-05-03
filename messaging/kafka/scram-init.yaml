@@ -1,0 +1,88 @@
+# Group F — Smart Waste Management System
+# Kafka SCRAM Credential Sync — Argo CD PostSync Hook
+# Owner: F4 Platform Team
+#
+# Runs after every Argo CD sync to keep SCRAM credentials in KRaft metadata
+# in sync with the current password in the kafka-user-passwords secret.
+#
+# Root cause this solves: Bitnami chart regenerates the PLAIN JAAS config from
+# the secret on every pod start, but the SCRAM credentials stored in KRaft are
+# only seeded by the chart's post-install Helm hook (which does not re-run on
+# upgrades). This hook closes the gap by reseeding SCRAM after every sync.
+#
+# Strategy: authenticate via PLAIN (always correct — lives in server.properties
+# which is rebuilt from the secret on each pod restart), then alter SCRAM to
+# match the same password. Both SHA-256 and SHA-512 are updated separately
+# because Kafka rejects both in a single --add-config request.
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-scram-init
+  namespace: messaging
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    component: messaging
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  backoffLimit: 5
+  template:
+    metadata:
+      name: kafka-scram-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: kafka-scram-init
+          image: public.ecr.aws/bitnami/kafka:4.0.0-debian-12-r10
+          env:
+            - name: KAFKA_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: kafka-user-passwords
+                  key: client-username
+            - name: KAFKA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kafka-user-passwords
+                  key: client-passwords
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              KAFKA_BROKER="kafka.messaging.svc.cluster.local:9092"
+
+              cat > /tmp/plain.properties <<EOF
+              security.protocol=SASL_PLAINTEXT
+              sasl.mechanism=PLAIN
+              sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username="${KAFKA_USERNAME}" password="${KAFKA_PASSWORD}";
+              EOF
+
+              echo "Waiting for Kafka to accept PLAIN connections..."
+              until kafka-topics.sh \
+                --command-config /tmp/plain.properties \
+                --bootstrap-server "$KAFKA_BROKER" \
+                --list &>/dev/null; do
+                echo "  Not ready, retrying in 5s..."
+                sleep 5
+              done
+              echo "Kafka ready."
+
+              echo "Seeding SCRAM-SHA-256 for ${KAFKA_USERNAME}..."
+              kafka-configs.sh \
+                --bootstrap-server "$KAFKA_BROKER" \
+                --command-config /tmp/plain.properties \
+                --alter --entity-type users --entity-name "${KAFKA_USERNAME}" \
+                --add-config "SCRAM-SHA-256=[password=${KAFKA_PASSWORD}]"
+
+              echo "Seeding SCRAM-SHA-512 for ${KAFKA_USERNAME}..."
+              kafka-configs.sh \
+                --bootstrap-server "$KAFKA_BROKER" \
+                --command-config /tmp/plain.properties \
+                --alter --entity-type users --entity-name "${KAFKA_USERNAME}" \
+                --add-config "SCRAM-SHA-512=[password=${KAFKA_PASSWORD}]"
+
+              echo "SCRAM credentials synced for ${KAFKA_USERNAME}."
