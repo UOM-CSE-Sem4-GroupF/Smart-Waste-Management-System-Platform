@@ -26,6 +26,7 @@ spec:
     - https://helm.releases.hashicorp.com
     - https://repos.emqx.io/charts
     - https://argoproj.github.io/argo-helm
+    - https://helm.influxdata.com/
 
   destinations:
     - server: https://kubernetes.default.svc
