@@ -34,6 +34,7 @@ spec:
         releaseName: kafka
         valueFiles:
           - $values/messaging/kafka/values-dev.yaml
+          - $values/messaging/kafka/values-doks.yaml
 
     # Values source — this repo provides the values file via $values alias
     - repoURL: https://github.com/UOM-CSE-Sem4-GroupF/Smart-Waste-Management-System-Platform
