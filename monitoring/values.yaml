@@ -68,10 +68,23 @@ alertmanager:
 
 # Kubernetes component monitoring
 kubeStateMetrics:
-  enabled: true   # monitors pod status, deployments etc.
+  enabled: true
 
 nodeExporter:
-  enabled: true   # monitors CPU, memory, disk on each node
+  enabled: true
+
+# Control plane components not accessible on managed DOKS — disable their
+# scrape services to avoid kube-system namespace permission errors in Argo CD.
+kubeScheduler:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeProxy:
+  enabled: false
+kubeEtcd:
+  enabled: false
+coreDns:
+  enabled: true
 
 # Waste Management Custom Alert Rules
 additionalPrometheusRulesMap:
