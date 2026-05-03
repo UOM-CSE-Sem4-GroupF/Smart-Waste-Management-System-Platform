@@ -54,14 +54,26 @@ spec:
       - RespectIgnoreDifferences=true
 
   ignoreDifferences:
-    # StatefulSet volumeClaimTemplates are immutable after creation
     - group: apps
       kind: StatefulSet
       jsonPointers:
         - /spec/volumeClaimTemplates
-    # Kafka generates a default config that differs from Argo CD's view
     - group: ""
       kind: ConfigMap
       name: kafka-configuration
       jsonPointers:
         - /data
+    # kafka-kraft secret contains cluster ID generated at bootstrap — Helm
+    # regenerates a different value on each render but the running cluster
+    # must keep its original ID, so ignore all diffs on this secret.
+    - group: ""
+      kind: Secret
+      name: kafka-kraft
+      jsonPointers:
+        - /data
+    # LoadBalancer IP is assigned by DO — not part of Helm desired state.
+    - group: ""
+      kind: Service
+      name: kafka-broker-0-external
+      jsonPointers:
+        - /status
