@@ -1,0 +1,62 @@
+# Group F — Smart Waste Management System
+# Argo CD Application: monitoring
+# Owner: F4 Platform Team
+#
+# Deploys kube-prometheus-stack (Prometheus + Grafana + AlertManager).
+# All three services are ClusterIP — access via kubectl port-forward:
+#   kubectl port-forward svc/monitoring-grafana -n monitoring 3000:80
+#   kubectl port-forward svc/monitoring-kube-prometheus-prometheus -n monitoring 9090:9090
+#
+# Chart: prometheus-community/kube-prometheus-stack
+# Namespace: monitoring
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: cicd
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    component: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: "84.5.0"
+      helm:
+        releaseName: monitoring
+        valueFiles:
+          - $values/monitoring/values.yaml
+
+    - repoURL: https://github.com/UOM-CSE-Sem4-GroupF/Smart-Waste-Management-System-Platform
+      targetRevision: main
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      jsonPointers:
+        - /webhooks/0/clientConfig/caBundle
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      jsonPointers:
+        - /webhooks/0/clientConfig/caBundle

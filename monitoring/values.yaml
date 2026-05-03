@@ -5,50 +5,62 @@
 
 grafana:
   enabled: true
-  adminPassword: "admin"  # Change this in production — use Vault secret
+  adminPassword: "admin"
 
-  # Grafana dashboard settings
   defaultDashboardsEnabled: true
   defaultDashboardsTimezone: "Asia/Colombo"
 
-  # Grafana service settings
   service:
     type: ClusterIP
     port: 80
 
-  # Persistent storage for dashboards
   persistence:
     enabled: true
+    storageClassName: do-block-storage
     size: 1Gi
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
 
 prometheus:
   enabled: true
 
   prometheusSpec:
-    # How long to keep metrics data
-    retention: 30d
+    retention: 15d
 
-    # Storage for metrics
     storageSpec:
       volumeClaimTemplate:
         spec:
+          storageClassName: do-block-storage
           accessModes: ["ReadWriteOnce"]
           resources:
             requests:
               storage: 5Gi
 
-    # Scrape interval — how often Prometheus checks services
     scrapeInterval: "30s"
     evaluationInterval: "30s"
+
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
 
 alertmanager:
   enabled: true
 
   alertmanagerSpec:
-    # How long to wait before re-sending same alert
     storage:
       volumeClaimTemplate:
         spec:
+          storageClassName: do-block-storage
           accessModes: ["ReadWriteOnce"]
           resources:
             requests:
