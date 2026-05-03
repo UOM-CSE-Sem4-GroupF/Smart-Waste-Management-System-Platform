@@ -70,3 +70,5 @@ spec:
       kind: StatefulSet
       jsonPointers:
         - /spec/volumeClaimTemplates
+        - /spec/template/metadata/annotations
+        - /spec/persistentVolumeClaimRetentionPolicy

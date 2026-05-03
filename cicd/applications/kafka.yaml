@@ -58,6 +58,8 @@ spec:
       kind: StatefulSet
       jsonPointers:
         - /spec/volumeClaimTemplates
+        - /spec/template/metadata/annotations
+        - /spec/persistentVolumeClaimRetentionPolicy
     - group: ""
       kind: ConfigMap
       name: kafka-configuration

@@ -36,3 +36,17 @@ spec:
     syncOptions:
       - CreateNamespace=false
       - ServerSideApply=true
+
+  ignoreDifferences:
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /spec/volumeClaimTemplates
+        - /spec/template/metadata/annotations
+        - /spec/persistentVolumeClaimRetentionPolicy
+    # Bitnami chart auto-generates postgres superuser password on each render
+    - group: ""
+      kind: Secret
+      name: postgres-waste-postgresql
+      jsonPointers:
+        - /data
