@@ -1,21 +1,21 @@
 # F2 Application Services (DigitalOcean)
-# InfluxDB
+# InfluxDB 2.7 — influxdata/influxdb2 chart
 # Namespace: waste-dev
+#
+# Switched from bitnami/influxdb (image unavailable on Docker Hub) to
+# influxdata/influxdb2 which uses the official influxdb:2.7.4-alpine image.
 
-image:
-  registry: ghcr.io
-  repository: bitnami/influxdb
-
-auth:
-  admin:
-    username: admin
-    password: admin12345
-    token: my-super-token
-    org: waste-org
-    bucket: waste-bootstrap
+adminUser:
+  organization: waste-org
+  bucket: waste-bootstrap
+  user: admin
+  password: "admin12345"
+  token: "my-super-token"
 
 persistence:
+  enabled: true
   storageClass: do-block-storage
+  size: 8Gi
 
 resources:
   requests:
