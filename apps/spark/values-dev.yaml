@@ -1,0 +1,17 @@
+# Inherited from base-service
+base-service:
+  image:
+    repository: ghcr.io/uom-cse-sem4-groupf/spark
+    tag: latest
+  service:
+    port: 8080
+  livenessProbe:
+    enabled: false
+    httpGet:
+      port: 8080
+      path: /
+  readinessProbe:
+    enabled: false
+    httpGet:
+      port: 8080
+      path: /

@@ -14,58 +14,58 @@
 #   4. Add Image Updater annotations to the generated Applications
 #      (see cicd/README.md for the annotation contract)
 #
-# ---
-# apiVersion: argoproj.io/v1alpha1
-# kind: ApplicationSet
-# metadata:
-#   name: services-dev
-#   namespace: cicd
-#   labels:
-#     project: group-f-swms
-#     managed-by: f4-platform
-# spec:
-#   goTemplate: true
-#   generators:
-#     - git:
-#         repoURL: https://github.com/UOM-CSE-Sem4-GroupF/Smart-Waste-Management-System-Platform
-#         revision: main
-#         directories:
-#           - path: apps/*
-#   template:
-#     metadata:
-#       name: "{{ .path.basename }}"
-#       namespace: cicd
-#       labels:
-#         project: group-f-swms
-#         managed-by: f4-platform
-#       annotations:
-#         # ── Image Updater annotations ──────────────────────────────────────
-#         # Customise these per service after the ApplicationSet creates the app.
-#         # See cicd/README.md for full annotation contract.
-#         argocd-image-updater.argoproj.io/image-list: >-
-#           app=ghcr.io/uom-cse-sem4-groupf/{{ .path.basename }}
-#         argocd-image-updater.argoproj.io/app.update-strategy: digest
-#         argocd-image-updater.argoproj.io/app.allow-tags: "regexp:^sha-"
-#         argocd-image-updater.argoproj.io/write-back-method: >-
-#           git:secret:cicd/argocd-image-updater-ssh
-#         argocd-image-updater.argoproj.io/write-back-target: >-
-#           helmvalues:apps/{{ .path.basename }}/values-dev.yaml
-#     spec:
-#       project: services
-#       source:
-#         repoURL: https://github.com/UOM-CSE-Sem4-GroupF/Smart-Waste-Management-System-Platform
-#         targetRevision: main
-#         path: "{{ .path.path }}"
-#         helm:
-#           valueFiles:
-#             - values-dev.yaml
-#       destination:
-#         server: https://kubernetes.default.svc
-#         namespace: waste-dev
-#       syncPolicy:
-#         automated:
-#           prune: true
-#           selfHeal: true
-#         syncOptions:
-#           - CreateNamespace=false
-#           - ServerSideApply=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: services-dev
+  namespace: cicd
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+spec:
+  goTemplate: true
+  generators:
+    - git:
+        repoURL: https://github.com/UOM-CSE-Sem4-GroupF/Smart-Waste-Management-System-Platform
+        revision: main
+        directories:
+          - path: apps/*
+  template:
+    metadata:
+      name: "{{ .path.basename }}"
+      namespace: cicd
+      labels:
+        project: group-f-swms
+        managed-by: f4-platform
+      annotations:
+        # ── Image Updater annotations ──────────────────────────────────────
+        # Customise these per service after the ApplicationSet creates the app.
+        # See cicd/README.md for full annotation contract.
+        argocd-image-updater.argoproj.io/image-list: >-
+          app=ghcr.io/uom-cse-sem4-groupf/{{ .path.basename }}
+        argocd-image-updater.argoproj.io/app.update-strategy: digest
+        argocd-image-updater.argoproj.io/app.allow-tags: "regexp:^sha-"
+        argocd-image-updater.argoproj.io/write-back-method: >-
+          git:secret:cicd/argocd-image-updater-ssh
+        argocd-image-updater.argoproj.io/write-back-target: >-
+          helmvalues:apps/{{ .path.basename }}/values-dev.yaml
+    spec:
+      project: services
+      source:
+        repoURL: https://github.com/UOM-CSE-Sem4-GroupF/Smart-Waste-Management-System-Platform
+        targetRevision: main
+        path: "{{ .path.path }}"
+        helm:
+          valueFiles:
+            - values-dev.yaml
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: waste-dev
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=false
+          - ServerSideApply=true

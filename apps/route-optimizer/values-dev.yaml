@@ -1,0 +1,17 @@
+# Inherited from base-service
+base-service:
+  image:
+    repository: ghcr.io/uom-cse-sem4-groupf/route-optimizer
+    tag: latest
+  service:
+    port: 3000
+  livenessProbe:
+    enabled: false
+    httpGet:
+      port: 3000
+      path: /
+  readinessProbe:
+    enabled: false
+    httpGet:
+      port: 3000
+      path: /
