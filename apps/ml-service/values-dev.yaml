@@ -1,0 +1,17 @@
+# Inherited from base-service
+base-service:
+  image:
+    repository: ghcr.io/uom-cse-sem4-groupf/ml-service
+    tag: latest
+  service:
+    port: 8000
+  livenessProbe:
+    enabled: true
+    httpGet:
+      port: 8000
+      path: /health
+  readinessProbe:
+    enabled: true
+    httpGet:
+      port: 8000
+      path: /health
