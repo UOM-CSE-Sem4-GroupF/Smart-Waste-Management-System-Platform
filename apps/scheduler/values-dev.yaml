@@ -1,0 +1,13 @@
+# Inherited from base-service
+base-service:
+  image:
+    repository: ghcr.io/uom-cse-sem4-groupf/scheduler
+    tag: latest
+  service:
+    port: 3000
+  livenessProbe:
+    httpGet:
+      port: 3000
+  readinessProbe:
+    httpGet:
+      port: 3000

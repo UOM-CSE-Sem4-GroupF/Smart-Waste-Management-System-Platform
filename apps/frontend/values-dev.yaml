@@ -1,0 +1,13 @@
+# Inherited from base-service
+base-service:
+  image:
+    repository: ghcr.io/uom-cse-sem4-groupf/frontend
+    tag: latest
+  service:
+    port: 80
+  livenessProbe:
+    httpGet:
+      port: 80
+  readinessProbe:
+    httpGet:
+      port: 80
