@@ -1,0 +1,167 @@
+name: Test Suite
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    # Nightly at 02:00 UTC — runs system tests
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      run_integration:
+        description: 'Run integration tests (requires Minikube service)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  # Helm unit tests — base-service chart and all 15 app charts
+  # ────────────────────────────────────────────────────────────────────────────
+  helm-unit:
+    name: Helm Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
+
+      - name: Install helm-unittest plugin
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest --version 0.6.3
+
+      - name: Update chart dependencies
+        run: |
+          for app in bin-status core-api frontend orchestrator scheduler notification \
+                     ml-service route-optimizer airflow \
+                     flink-deviation flink-sensor flink-telemetry flink-vehicle flink-zone spark; do
+            helm dependency update apps/$app/ 2>/dev/null || true
+          done
+
+      - name: Run base-service helm unit tests
+        run: |
+          helm unittest helm/charts/base-service/ \
+            --file 'tests/unit/helm/base-service/*_test.yaml'
+
+      - name: Run per-app helm unit tests
+        run: |
+          for app in bin-status core-api frontend orchestrator scheduler notification \
+                     ml-service route-optimizer airflow \
+                     flink-deviation flink-sensor flink-telemetry flink-vehicle flink-zone spark; do
+            echo "Testing $app ..."
+            helm unittest apps/$app/ \
+              --file "tests/unit/helm/apps/${app}_test.yaml" || exit 1
+          done
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Python unit tests — bridge.py
+  # ────────────────────────────────────────────────────────────────────────────
+  python-unit:
+    name: Python Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install test dependencies
+        run: pip install -r requirements-test.txt
+
+      - name: Run bridge unit tests
+        run: pytest tests/unit/python/ -m unit -v --tb=short
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Shell unit tests — setup scripts
+  # ────────────────────────────────────────────────────────────────────────────
+  shell-unit:
+    name: Shell Unit Tests (bats)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install bats
+        run: npm install -g bats
+
+      - name: Run shell unit tests
+        run: |
+          bats tests/unit/shell/test_setup_local.bats
+          bats tests/unit/shell/test_setup_doks.bats
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Component tests — static config validation, no cluster needed
+  # ────────────────────────────────────────────────────────────────────────────
+  component:
+    name: Component Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install test dependencies
+        run: pip install -r requirements-test.txt
+
+      - name: Run component tests
+        run: pytest tests/component/kong/ tests/component/kafka/ -m component -v --tb=short
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
+
+      - name: Update chart dependencies for manifest tests
+        run: |
+          for app in bin-status core-api frontend orchestrator scheduler notification \
+                     ml-service route-optimizer; do
+            helm dependency update apps/$app/ 2>/dev/null || true
+          done
+
+      - name: Run manifest component tests
+        run: pytest tests/component/manifests/ -m component -v --tb=short
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Integration tests — cross-service config (static, no cluster)
+  # ────────────────────────────────────────────────────────────────────────────
+  integration-static:
+    name: Integration Tests (static)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install test dependencies
+        run: pip install -r requirements-test.txt
+
+      - name: Run cross-service config tests
+        run: pytest tests/integration/test_cross_service_config.py -v --tb=short
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # System tests — namespace creation (kind cluster, nightly + manual only)
+  # ────────────────────────────────────────────────────────────────────────────
+  system-namespaces:
+    name: System Test — Namespace Creation
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kind
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.23.0/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Run namespace creation system test
+        run: bash tests/system/test_namespace_creation.sh

@@ -1,0 +1,6 @@
+dependencies:
+- name: base-service
+  repository: file://../../helm/charts/base-service
+  version: 1.0.0
+digest: sha256:1c2d83d327ef6d6a5648a1b84360d4fc5fae069f180c47ba9617b2be5242c533
+generated: "2026-05-06T15:46:54.0793938+05:30"

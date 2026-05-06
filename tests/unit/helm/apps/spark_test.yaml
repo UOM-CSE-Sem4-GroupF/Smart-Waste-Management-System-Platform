@@ -1,0 +1,17 @@
+suite: spark chart values
+templates:
+  - charts/base-service/templates/deployment.yaml
+values:
+  - values-dev.yaml
+tests:
+  - it: should use spark image repository
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: "ghcr.io/uom-cse-sem4-groupf/spark:.*"
+
+  - it: should expose port 8080
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 8080

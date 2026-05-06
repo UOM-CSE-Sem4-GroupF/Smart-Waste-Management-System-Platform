@@ -1,0 +1,34 @@
+suite: frontend chart values
+templates:
+  - charts/base-service/templates/deployment.yaml
+  - charts/base-service/templates/service.yaml
+values:
+  - values-dev.yaml
+tests:
+  - it: should use dashboard image repository
+    template: charts/base-service/templates/deployment.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: "ghcr.io/uom-cse-sem4-groupf/dashboard:.*"
+
+  - it: should expose port 3000
+    template: charts/base-service/templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 3000
+
+  - it: should serve service on port 3000
+    template: charts/base-service/templates/service.yaml
+    asserts:
+      - equal:
+          path: spec.ports[0].port
+          value: 3000
+
+  - it: should not have ExternalSecret (no secrets required)
+    templates:
+      - charts/base-service/templates/external-secret.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
