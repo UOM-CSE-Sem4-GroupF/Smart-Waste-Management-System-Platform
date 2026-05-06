@@ -1,0 +1,20 @@
+apiVersion: argocd.argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: flink-deviation
+  namespace: cicd
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/UOM-CSE-Sem4-GroupF/Smart-Waste-Management-System-Platform
+    targetRevision: main
+    path: helm/charts/base-service
+    helm:
+      releaseName: flink-deviation
+      valueFiles:
+        - ../../../waste-dev/flink-processor/values-deviation.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: waste-dev
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }

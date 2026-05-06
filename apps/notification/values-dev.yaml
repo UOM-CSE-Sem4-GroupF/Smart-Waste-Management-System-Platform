@@ -1,0 +1,28 @@
+# Inherited from base-service
+base-service:
+  image:
+    repository: ghcr.io/uom-cse-sem4-groupf/notification
+    tag: latest
+  service:
+    port: 3004
+  livenessProbe:
+    httpGet:
+      port: 3004
+  readinessProbe:
+    httpGet:
+      port: 3004
+
+  env:
+    PORT: "3004"
+    KAFKA_BROKER: "kafka.messaging.svc.cluster.local:9092"
+
+  externalSecret:
+    enabled: true
+    vaultPath: swms/kafka
+    secretStoreName: vault-backend
+    secretStoreKind: ClusterSecretStore
+    data:
+      - secretKey: KAFKA_USER
+        remoteRef: { key: swms/kafka, property: sasl_username }
+      - secretKey: KAFKA_PASS
+        remoteRef: { key: swms/kafka, property: sasl_password }

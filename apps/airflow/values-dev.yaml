@@ -1,0 +1,17 @@
+# Inherited from base-service
+base-service:
+  image:
+    repository: ghcr.io/uom-cse-sem4-groupf/airflow
+    tag: latest
+  service:
+    port: 8080
+  livenessProbe:
+    enabled: true
+    httpGet:
+      port: 8080
+      path: /
+  readinessProbe:
+    enabled: true
+    httpGet:
+      port: 8080
+      path: /

@@ -1,0 +1,28 @@
+# Inherited from base-service
+base-service:
+  image:
+    repository: ghcr.io/uom-cse-sem4-groupf/scheduler
+    tag: latest
+  service:
+    port: 3003
+  livenessProbe:
+    httpGet:
+      port: 3003
+  readinessProbe:
+    httpGet:
+      port: 3003
+
+  env:
+    PORT: "3003"
+    KAFKA_BROKER: "kafka.messaging.svc.cluster.local:9092"
+
+  externalSecret:
+    enabled: true
+    vaultPath: swms/kafka
+    secretStoreName: vault-backend
+    secretStoreKind: ClusterSecretStore
+    data:
+      - secretKey: KAFKA_USER
+        remoteRef: { key: swms/kafka, property: sasl_username }
+      - secretKey: KAFKA_PASS
+        remoteRef: { key: swms/kafka, property: sasl_password }
