@@ -5,8 +5,6 @@ base-service:
     tag: latest
   service:
     port: 8001
-  env:
-    DATABASE_URL: "postgresql://swms_user:swms_password@postgres-waste.data.svc.cluster.local:5432/waste_management?schema=public"
   livenessProbe:
     enabled: true
     httpGet:
@@ -17,3 +15,24 @@ base-service:
     httpGet:
       port: 8001
       path: /health
+
+  # Build DATABASE_URL at runtime so POSTGRES_PASSWORD is expanded from the ExternalSecret
+  command: ["/bin/sh", "-c"]
+  args:
+    - >-
+      export DATABASE_URL="postgresql://waste_admin:${POSTGRES_PASSWORD}@postgres-waste-postgresql.waste-dev.svc.cluster.local:5432/waste_management?schema=f2"
+      && node dist/server.js
+
+  env:
+    PORT: "8001"
+    NODE_ENV: "production"
+    HOST: "0.0.0.0"
+
+  externalSecret:
+    enabled: true
+    vaultPath: swms/postgres-waste
+    secretStoreName: vault-backend
+    secretStoreKind: ClusterSecretStore
+    data:
+      - secretKey: POSTGRES_PASSWORD
+        remoteRef: { key: swms/postgres-waste, property: password }
