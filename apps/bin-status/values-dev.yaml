@@ -15,7 +15,7 @@ base-service:
   env:
     PORT: "3002"
     KAFKA_BROKER: "kafka.messaging.svc.cluster.local:9092"
-    DATA_ANALYSIS_URL: "http://kong.kong.svc.cluster.local:8000/data-analysis"
+    DATA_ANALYSIS_URL: "http://core-api.waste-dev.svc.cluster.local:8001"
     NOTIFICATION_URL: "http://notification.waste-dev.svc.cluster.local:3004"
 
   externalSecret:

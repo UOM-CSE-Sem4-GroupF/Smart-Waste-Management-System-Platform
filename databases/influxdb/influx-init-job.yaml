@@ -1,0 +1,59 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: influxdb-buckets-init
+  namespace: waste-dev
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: influxdb-buckets-init
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        - name: wait-for-influxdb
+          image: curlimages/curl:latest
+          command:
+            - sh
+            - -c
+            - |
+              until curl -sf http://influxdb.waste-dev.svc.cluster.local:8086/health | grep -q '"status":"pass"'; do
+                echo "Waiting for InfluxDB..."
+                sleep 5
+              done
+              echo "InfluxDB is ready"
+      containers:
+        - name: influx-init
+          image: influxdb:2.7
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              INFLUX="influx --host http://influxdb.waste-dev.svc.cluster.local:8086 --token ${INFLUX_TOKEN} --org waste-org"
+
+              create_bucket() {
+                local name=$1
+                local retention=$2
+                if $INFLUX bucket list --name "$name" 2>/dev/null | grep -q "$name"; then
+                  echo "Bucket $name already exists — skipping"
+                else
+                  $INFLUX bucket create --name "$name" --retention "$retention"
+                  echo "Created bucket: $name (retention: $retention)"
+                fi
+              }
+
+              create_bucket "bin_readings_raw"       "8760h"
+              create_bucket "vehicle_positions"      "8760h"
+              create_bucket "bin_readings_processed" "2160h"
+              create_bucket "zone_statistics"        "17520h"
+              create_bucket "waste_generation_trends" "0"
+
+              echo "=== InfluxDB bucket initialization complete ==="
+          env:
+            - name: INFLUX_TOKEN
+              value: "my-super-token"

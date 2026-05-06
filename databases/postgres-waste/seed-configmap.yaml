@@ -1,0 +1,248 @@
+﻿apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-seed-v3
+  namespace: waste-dev
+data:
+  seed.sql: |
+    -- =============================================================
+    -- Group F — Smart Waste Management System
+    -- Seed Data v3.0
+    -- PostgreSQL 15+
+    --
+    -- Run AFTER database-schema-v3.sql
+    -- Order follows FK dependency chain:
+    --   f2.waste_categories → f2.city_zones → f2.vehicles → f2.vehicle_waste_categories
+    --   → f2.bin_clusters → f2.bins → f2.devices → f2.bin_current_state
+    --   f3.drivers → f3.routine_schedules
+    -- =============================================================
+    
+    
+    -- -------------------------------------------------------------
+    -- F2: WASTE CATEGORIES
+    -- -------------------------------------------------------------
+    INSERT INTO f2.waste_categories (name, avg_kg_per_litre, colour_code, recyclable, special_handling, description)
+    VALUES
+        ('food_waste', 0.900, '#8B4513', FALSE, FALSE, 'Organic and food waste'),
+        ('paper',      0.100, '#4169E1', TRUE,  FALSE, 'Paper and cardboard'),
+        ('glass',      2.500, '#228B22', TRUE,  FALSE, 'Glass waste'),
+        ('plastic',    0.050, '#FF6347', TRUE,  FALSE, 'Plastic waste'),
+        ('general',    0.300, '#808080', FALSE, FALSE, 'Mixed/general waste'),
+        ('e_waste',    3.200, '#FFD700', FALSE, TRUE,  'Electronic waste — requires dedicated vehicle')
+    ON CONFLICT (name) DO NOTHING;
+    
+    
+    -- -------------------------------------------------------------
+    -- F2: CITY ZONES
+    -- -------------------------------------------------------------
+    INSERT INTO f2.city_zones (name, code, collection_day, collection_time, active)
+    VALUES
+        ('Zone 1 – Colombo Central', 'ZONE-01', 'Monday',    '08:00', TRUE),
+        ('Zone 2 – Colombo North',   'ZONE-02', 'Tuesday',   '08:00', TRUE),
+        ('Zone 3 – Colombo South',   'ZONE-03', 'Wednesday', '08:00', TRUE),
+        ('Zone 4 – Colombo East',    'ZONE-04', 'Thursday',  '08:00', TRUE)
+    ON CONFLICT (code) DO NOTHING;
+    
+    
+    -- -------------------------------------------------------------
+    -- F2: VEHICLES
+    -- -------------------------------------------------------------
+    INSERT INTO f2.vehicles (id, registration, vehicle_type, max_cargo_kg, volume_m3, status, active)
+    VALUES
+        ('LORRY-01', 'WP-TRK-1001', 'large',       15000.00, 12.00, 'available', TRUE),
+        ('LORRY-02', 'WP-TRK-1002', 'medium',       8000.00, 10.00, 'available', TRUE),
+        ('LORRY-03', 'WP-TRK-1003', 'small',        2000.00,  8.00, 'available', TRUE),
+        ('LORRY-04', 'WP-TRK-1004', 'extra_large', 25000.00, 14.00, 'available', TRUE)
+    ON CONFLICT (id) DO NOTHING;
+    
+    -- Vehicle ↔ waste category support (junction table)
+    INSERT INTO f2.vehicle_waste_categories (vehicle_id, category_id)
+    SELECT v.id, c.id
+    FROM f2.vehicles v, f2.waste_categories c
+    WHERE (v.id = 'LORRY-01' AND c.name IN ('food_waste', 'general', 'paper'))
+       OR (v.id = 'LORRY-02' AND c.name IN ('plastic', 'paper', 'general'))
+       OR (v.id = 'LORRY-03' AND c.name IN ('glass'))
+       OR (v.id = 'LORRY-04' AND c.name IN ('food_waste', 'general', 'plastic', 'paper', 'e_waste'))
+    ON CONFLICT DO NOTHING;
+    
+    
+    -- -------------------------------------------------------------
+    -- F2: BIN CLUSTERS
+    -- Each cluster = one physical GPS stop for the collection lorry
+    -- OR-Tools routes to clusters, not individual bins
+    -- -------------------------------------------------------------
+    INSERT INTO f2.bin_clusters (id, zone_id, name, lat, lng, address, cluster_type, active)
+    SELECT
+        s.cluster_id,
+        z.id,
+        s.cluster_name,
+        s.lat,
+        s.lng,
+        s.address,
+        s.cluster_type,
+        TRUE
+    FROM (VALUES
+        ('CLUSTER-001', 'ZONE-01', 'Central Market',      6.9270790, 79.8612440, '36 Main Street, Colombo 01',         'commercial'),
+        ('CLUSTER-002', 'ZONE-01', 'Pettah Bus Terminal', 6.9282100, 79.8625100, 'Pettah Bus Stand, Colombo 01',        'public_space'),
+        ('CLUSTER-003', 'ZONE-02', 'Maradana Apartments', 6.9311000, 79.8641000, 'Block B, Maradana, Colombo 10',       'residential'),
+        ('CLUSTER-004', 'ZONE-02', 'Norris Canal Road',   6.9325000, 79.8657000, '12 Norris Canal Rd, Colombo 10',      'street_corner'),
+        ('CLUSTER-005', 'ZONE-02', 'Dematagoda Glass Hub',6.9340000, 79.8672000, 'Industrial Zone, Dematagoda',         'industrial'),
+        ('CLUSTER-006', 'ZONE-03', 'Wellawatte Market',   6.9362000, 79.8689000, '5 Galle Rd, Wellawatte',              'commercial'),
+        ('CLUSTER-007', 'ZONE-03', 'Bambalapitiya Flats', 6.9381000, 79.8701000, 'Bambalapitiya Flats, Colombo 04',     'residential'),
+        ('CLUSTER-008', 'ZONE-03', 'Dehiwala Junction',   6.9395000, 79.8718000, 'Dehiwala–Mount Lavinia Junction',     'street_corner'),
+        ('CLUSTER-009', 'ZONE-04', 'Rajagiriya Glass Hub',6.9410000, 79.8732000, 'Glass Collection Point, Rajagiriya',  'industrial'),
+        ('CLUSTER-010', 'ZONE-04', 'Kotte Town Centre',   6.9424000, 79.8749000, 'Kotte Municipal Complex',             'public_space')
+    ) AS s(cluster_id, zone_code, cluster_name, lat, lng, address, cluster_type)
+    JOIN f2.city_zones z ON z.code = s.zone_code
+    ON CONFLICT (id) DO NOTHING;
+    
+    
+    -- -------------------------------------------------------------
+    -- F2: BINS
+    -- Each bin belongs to a cluster
+    -- depth_cm = physical container depth used by ESP32 firmware
+    -- -------------------------------------------------------------
+    INSERT INTO f2.bins (id, cluster_id, waste_category_id, volume_litres, depth_cm, address, active)
+    SELECT b.id, b.cluster_id, c.id, b.volume_litres, b.depth_cm, b.address, TRUE
+    FROM (VALUES
+        ('BIN-001', 'CLUSTER-001', 'food_waste', 240.00, 120, 'Central Market – Bay 1'),
+        ('BIN-002', 'CLUSTER-001', 'general',    240.00, 120, 'Central Market – Bay 2'),
+        ('BIN-003', 'CLUSTER-002', 'paper',      360.00, 150, 'Pettah Bus Terminal – North End'),
+        ('BIN-004', 'CLUSTER-003', 'plastic',    240.00, 120, 'Maradana Apartments – Block B'),
+        ('BIN-005', 'CLUSTER-004', 'glass',      120.00,  90, 'Norris Canal Rd – Corner'),
+        ('BIN-006', 'CLUSTER-005', 'glass',      120.00,  90, 'Dematagoda Glass Hub – Unit 1'),
+        ('BIN-007', 'CLUSTER-006', 'food_waste', 240.00, 120, 'Wellawatte Market – Entrance'),
+        ('BIN-008', 'CLUSTER-007', 'general',    360.00, 150, 'Bambalapitiya Flats – Ground Floor'),
+        ('BIN-009', 'CLUSTER-009', 'glass',      120.00,  90, 'Rajagiriya Glass Hub – Bay 1'),
+        ('BIN-010', 'CLUSTER-010', 'general',    240.00, 120, 'Kotte Town Centre – Main Plaza')
+    ) AS b(id, cluster_id, waste_category_name, volume_litres, depth_cm, address)
+    JOIN f2.waste_categories c ON c.name = b.waste_category_name
+    ON CONFLICT (id) DO NOTHING;
+    
+    
+    -- -------------------------------------------------------------
+    -- F2: DEVICES (IoT sensors attached to bins)
+    -- firmware_current_version != firmware_target_version means OTA pending
+    -- -------------------------------------------------------------
+    INSERT INTO f2.devices (
+        id, bin_id, device_type, status,
+        sleep_interval_normal_s, sleep_interval_monitor_s,
+        sleep_interval_urgent_s, sleep_interval_critical_s,
+        urgency_threshold_monitor, urgency_threshold_urgent, urgency_threshold_critical,
+        firmware_target_version, firmware_current_version,
+        mqtt_topic, battery_level_pct, last_seen_at
+    )
+    VALUES
+        ('ESP32-AA-0001', 'BIN-001', 'esp32_ultrasonic', 'active', 600, 300, 120, 30, 50, 75, 90, 'v2.1.0', 'v2.1.0', 'sensors/bin/BIN-001/telemetry', 91.0, NOW() - INTERVAL '2 minutes'),
+        ('ESP32-AA-0002', 'BIN-002', 'esp32_ultrasonic', 'active', 600, 300, 120, 30, 50, 75, 90, 'v2.1.0', 'v2.1.0', 'sensors/bin/BIN-002/telemetry', 88.5, NOW() - INTERVAL '3 minutes'),
+        ('ESP32-AA-0003', 'BIN-003', 'esp32_ultrasonic', 'active', 600, 300, 120, 30, 50, 75, 90, 'v2.1.0', 'v2.0.5', 'sensors/bin/BIN-003/telemetry', 93.0, NOW() - INTERVAL '2 minutes'),
+        ('ESP32-AA-0004', 'BIN-004', 'esp32_ultrasonic', 'active', 600, 300, 120, 30, 50, 75, 90, 'v2.1.0', 'v2.1.0', 'sensors/bin/BIN-004/telemetry', 86.0, NOW() - INTERVAL '4 minutes'),
+        ('ESP32-AA-0005', 'BIN-005', 'esp32_weight',     'active', 600, 300, 120, 30, 50, 75, 90, 'v2.1.0', 'v2.1.0', 'sensors/bin/BIN-005/telemetry', 79.0, NOW() - INTERVAL '1 minute'),
+        ('ESP32-AA-0006', 'BIN-006', 'esp32_weight',     'active', 600, 300, 120, 30, 50, 75, 90, 'v2.1.0', 'v2.1.0', 'sensors/bin/BIN-006/telemetry', 90.0, NOW() - INTERVAL '2 minutes'),
+        ('ESP32-AA-0007', 'BIN-007', 'esp32_ultrasonic', 'active', 600, 300, 120, 30, 50, 75, 90, 'v2.1.0', 'v2.1.0', 'sensors/bin/BIN-007/telemetry', 87.0, NOW() - INTERVAL '3 minutes'),
+        ('ESP32-AA-0008', 'BIN-008', 'esp32_ultrasonic', 'active', 600, 300, 120, 30, 50, 75, 90, 'v2.1.0', 'v2.1.0', 'sensors/bin/BIN-008/telemetry', 85.4, NOW() - INTERVAL '2 minutes'),
+        ('ESP32-AA-0009', 'BIN-009', 'esp32_weight',     'active', 600, 300, 120, 30, 50, 75, 90, 'v2.1.0', 'v2.0.5', 'sensors/bin/BIN-009/telemetry', 84.5, NOW() - INTERVAL '3 minutes'),
+        ('ESP32-AA-0010', 'BIN-010', 'esp32_ultrasonic', 'active', 600, 300, 120, 30, 50, 75, 90, 'v2.1.0', 'v2.1.0', 'sensors/bin/BIN-010/telemetry', 86.7, NOW() - INTERVAL '2 minutes')
+    ON CONFLICT (id) DO NOTHING;
+    
+    
+    -- -------------------------------------------------------------
+    -- F2: BIN CURRENT STATE
+    -- Initial seed — will be continuously overwritten by Flink on
+    -- every sensor reading. The estimated_weight_kg and predicted_full_at
+    -- are computed here using the same formula as the Flink processor.
+    -- cluster_id, zone_id, waste_category_id, volume_litres are
+    -- denormalized from bins/bin_clusters for fast dashboard reads.
+    -- -------------------------------------------------------------
+    INSERT INTO f2.bin_current_state (
+        bin_id,
+        fill_level_pct, battery_level_pct, signal_strength_dbm, temperature_c,
+        estimated_weight_kg, fill_rate_pct_per_hour, predicted_full_at,
+        status, urgency_score,
+        cluster_id, zone_id, waste_category_id, volume_litres,
+        last_reading_at, updated_at
+    )
+    SELECT
+        b.id,
+        s.fill_level_pct,
+        s.battery_level_pct,
+        s.signal_strength_dbm,
+        s.temperature_c,
+        -- estimated_weight_kg = (fill_pct / 100) × volume_litres × avg_kg_per_litre
+        ROUND((s.fill_level_pct / 100.0 * b.volume_litres * c.avg_kg_per_litre)::NUMERIC, 2),
+        s.fill_rate_pct_per_hour,
+        -- predicted_full_at = now + hours_until_full
+        NOW() + (s.hours_until_full * INTERVAL '1 hour'),
+        s.status,
+        s.urgency_score,
+        bc.id       AS cluster_id,
+        bc.zone_id,
+        b.waste_category_id,
+        b.volume_litres,
+        NOW() - INTERVAL '1 minute',
+        NOW()
+    FROM (VALUES
+        -- bin_id, fill%, battery%, signal_dbm, temp_c, fill_rate, hours_until_full, status, urgency
+        ('BIN-001', 82.40::DECIMAL, 91.0::DECIMAL, -65.0::DECIMAL, 28.5::DECIMAL, 7.200::DECIMAL,  2.0::DECIMAL,  'urgent',   81),
+        ('BIN-002', 61.20::DECIMAL, 88.5::DECIMAL, -70.0::DECIMAL, 27.0::DECIMAL, 3.100::DECIMAL,  6.3::DECIMAL,  'monitor',  52),
+        ('BIN-003', 46.30::DECIMAL, 93.0::DECIMAL, -62.0::DECIMAL, 26.5::DECIMAL, 1.500::DECIMAL, 18.0::DECIMAL,  'normal',   28),
+        ('BIN-004', 73.90::DECIMAL, 86.0::DECIMAL, -68.0::DECIMAL, 29.0::DECIMAL, 2.400::DECIMAL,  4.2::DECIMAL,  'monitor',  59),
+        ('BIN-005', 91.50::DECIMAL, 79.0::DECIMAL, -72.0::DECIMAL, 27.5::DECIMAL, 5.900::DECIMAL,  0.75::DECIMAL, 'critical', 93),
+        ('BIN-006', 67.80::DECIMAL, 90.0::DECIMAL, -64.0::DECIMAL, 28.0::DECIMAL, 3.700::DECIMAL,  5.0::DECIMAL,  'monitor',  56),
+        ('BIN-007', 88.20::DECIMAL, 87.0::DECIMAL, -66.0::DECIMAL, 28.5::DECIMAL, 4.600::DECIMAL,  1.5::DECIMAL,  'urgent',   84),
+        ('BIN-008', 72.68::DECIMAL, 85.4::DECIMAL, -71.0::DECIMAL, 27.0::DECIMAL, 2.200::DECIMAL,  4.0::DECIMAL,  'monitor',  58),
+        ('BIN-009', 79.60::DECIMAL, 84.5::DECIMAL, -69.0::DECIMAL, 26.5::DECIMAL, 2.900::DECIMAL,  3.0::DECIMAL,  'urgent',   78),
+        ('BIN-010', 64.90::DECIMAL, 86.7::DECIMAL, -67.0::DECIMAL, 27.5::DECIMAL, 2.500::DECIMAL,  6.0::DECIMAL,  'monitor',  54)
+    ) AS s(bin_id, fill_level_pct, battery_level_pct, signal_strength_dbm, temperature_c,
+           fill_rate_pct_per_hour, hours_until_full, status, urgency_score)
+    JOIN f2.bins          b  ON b.id  = s.bin_id
+    JOIN f2.waste_categories c ON c.id = b.waste_category_id
+    JOIN f2.bin_clusters  bc ON bc.id = b.cluster_id
+    ON CONFLICT (bin_id) DO UPDATE SET
+        fill_level_pct         = EXCLUDED.fill_level_pct,
+        battery_level_pct      = EXCLUDED.battery_level_pct,
+        signal_strength_dbm    = EXCLUDED.signal_strength_dbm,
+        temperature_c          = EXCLUDED.temperature_c,
+        estimated_weight_kg    = EXCLUDED.estimated_weight_kg,
+        fill_rate_pct_per_hour = EXCLUDED.fill_rate_pct_per_hour,
+        predicted_full_at      = EXCLUDED.predicted_full_at,
+        status                 = EXCLUDED.status,
+        urgency_score          = EXCLUDED.urgency_score,
+        last_reading_at        = EXCLUDED.last_reading_at,
+        updated_at             = EXCLUDED.updated_at;
+    
+    
+    -- -------------------------------------------------------------
+    -- F3: DRIVERS
+    -- keycloak_user_id MUST match Keycloak user record (NOT NULL constraint)
+    -- -------------------------------------------------------------
+    INSERT INTO f3.drivers (id, name, phone, email, keycloak_user_id, zone_id, current_vehicle_id, status, shift_start, shift_end)
+    VALUES
+        ('DRV-001', 'Amith Perera',   '0712345678', 'amith@swms.lk',    'kc-drv-001', 1, 'LORRY-01', 'available', '08:00', '16:00'),
+        ('DRV-002', 'Samantha Silva', '0712345679', 'samantha@swms.lk', 'kc-drv-002', 2, 'LORRY-02', 'on_job',    '08:00', '16:00'),
+        ('DRV-003', 'Rajesh Kumar',   '0712345680', 'rajesh@swms.lk',   'kc-drv-003', 3, 'LORRY-03', 'available', '14:00', '22:00'),
+        ('DRV-004', 'Maria Gonzalez', '0712345681', 'maria@swms.lk',    'kc-drv-004', 4, 'LORRY-04', 'off_duty',  '08:00', '16:00'),
+        ('DRV-005', 'Hassan Ahmed',   '0712345682', 'hassan@swms.lk',   'kc-drv-005', 1, NULL,       'available', '22:00', '06:00')
+    ON CONFLICT (id) DO NOTHING;
+    
+    
+    -- -------------------------------------------------------------
+    -- F3: ROUTINE SCHEDULES
+    -- zone_id references f2.city_zones by position (no FK — cross-schema)
+    -- waste_category_id joined by name for readability
+    -- NULL waste_category_id = collect all categories in this zone
+    -- -------------------------------------------------------------
+    INSERT INTO f3.routine_schedules (zone_id, waste_category_id, frequency, day_of_week, time_of_day, active)
+    SELECT s.zone_id, c.id, s.frequency, s.day_of_week, s.time_of_day::TIME, TRUE
+    FROM (VALUES
+        (1, 'food_waste', 'weekly', 'Monday',    '08:00'),
+        (1, 'general',    'weekly', 'Monday',    '10:00'),
+        (2, 'paper',      'weekly', 'Tuesday',   '08:00'),
+        (2, 'plastic',    'weekly', 'Tuesday',   '10:00'),
+        (3, 'food_waste', 'weekly', 'Wednesday', '08:00'),
+        (3, 'glass',      'weekly', 'Wednesday', '14:00'),
+        (4, 'general',    'weekly', 'Thursday',  '08:00')
+    ) AS s(zone_id, waste_category_name, frequency, day_of_week, time_of_day)
+    JOIN f2.waste_categories c ON c.name = s.waste_category_name
+    ON CONFLICT DO NOTHING;
+    
