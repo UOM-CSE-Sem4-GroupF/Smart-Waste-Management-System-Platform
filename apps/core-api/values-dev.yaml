@@ -1,0 +1,19 @@
+# Inherited from base-service
+base-service:
+  image:
+    repository: ghcr.io/uom-cse-sem4-groupf/core-api
+    tag: latest
+  service:
+    port: 8001
+  env:
+    DATABASE_URL: "postgresql://swms_user:swms_password@postgres-waste.data.svc.cluster.local:5432/waste_management?schema=public"
+  livenessProbe:
+    enabled: true
+    httpGet:
+      port: 8001
+      path: /health
+  readinessProbe:
+    enabled: true
+    httpGet:
+      port: 8001
+      path: /health

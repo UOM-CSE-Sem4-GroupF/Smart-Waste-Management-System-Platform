@@ -37,7 +37,7 @@ data:
       # Serves all bin state and zone summary queries
       # ---------------------------------------------------------
       - name: bin-status-service
-        url: http://bin-status-service.waste-dev.svc.cluster.local:3001
+        url: http://bin-status-service.waste-dev.svc.cluster.local:3002
         connect_timeout: 3000
         read_timeout: 10000
         write_timeout: 10000
@@ -82,7 +82,7 @@ data:
       # Manages the full job lifecycle state machine
       # ---------------------------------------------------------
       - name: workflow-orchestrator
-        url: http://workflow-orchestrator.waste-dev.svc.cluster.local:3002
+        url: http://workflow-orchestrator.waste-dev.svc.cluster.local:3001
         connect_timeout: 3000
         read_timeout: 30000
         write_timeout: 30000

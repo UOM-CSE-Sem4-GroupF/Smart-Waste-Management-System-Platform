@@ -1,0 +1,10 @@
+apiVersion: v2
+name: core-api
+description: Metadata and Core API Service for Smart Waste Management System
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+dependencies:
+  - name: base-service
+    version: 0.1.0
+    repository: "file://../../helm/charts/base-service"
