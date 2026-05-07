@@ -37,3 +37,9 @@ venv/
 .claude/
 
 claude.md
+
+# Helm
+# ----
+**/charts/*.tgz
+**/charts/
+**/Chart.lock
