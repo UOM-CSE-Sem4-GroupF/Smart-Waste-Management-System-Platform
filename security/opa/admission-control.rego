@@ -30,6 +30,9 @@ import future.keywords.if
 
 deny[msg] {
   # Match Pod creation/update (Deployments create Pods via their template)
+  # NOTE: runAsUser: 0 (root) is not blocked here. The flink-telemetry pod runs
+  # as root because PyFlink requires write access to /tmp and /opt/flink/log.
+  # It is mitigated by allowPrivilegeEscalation: false + capabilities.drop: ALL.
   input.request.kind.kind == "Pod"
   container := input.request.object.spec.containers[_]
   container.securityContext.allowPrivilegeEscalation == true

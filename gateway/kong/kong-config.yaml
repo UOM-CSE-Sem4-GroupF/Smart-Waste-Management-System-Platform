@@ -478,8 +478,19 @@ data:
             paths:
               - /socket.io
             strip_path: false
-            # Auth is handled inside the Socket.IO handshake
+            # JWT is enforced at the Kong level (query param ?token=<jwt> or
+            # Authorization: Bearer header). Socket.IO also validates internally
+            # for defence-in-depth. Clients must pass the Keycloak access token
+            # as ?token=<jwt> in the Socket.IO connection URL because the browser
+            # WebSocket API cannot set custom headers on the upgrade request.
             plugins:
+              - name: jwt
+                config:
+                  key_claim_name: iss
+                  claims_to_verify:
+                    - exp
+                  uri_param_names:
+                    - token
               - name: cors
                 config:
                   origins:

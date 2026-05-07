@@ -11,7 +11,10 @@ mock_pod(name, containers) := {
     "object": {
       "metadata": {
         "name": name,
-        "labels": {"app": "test-app", "version": "v1.0.0"},
+        "labels": {
+          "app.kubernetes.io/name":     "test-app",
+          "app.kubernetes.io/instance": "test-app",
+        },
       },
       "spec": {"containers": containers, "initContainers": []},
     },
@@ -59,8 +62,8 @@ test_deny_deployment_privilege_escalation if {
   bad_container := json.patch(safe_container, [{"op": "replace", "path": "/securityContext/allowPrivilegeEscalation", "value": true}])
   input := mock_deployment(
     "bad-deploy",
-    {"app": "test", "version": "v1"},
-    {"app": "test", "version": "v1"},
+    {"app.kubernetes.io/name": "test", "app.kubernetes.io/instance": "test"},
+    {"app.kubernetes.io/name": "test", "app.kubernetes.io/instance": "test"},
     [bad_container],
   )
   count(deny) > 0
@@ -68,12 +71,15 @@ test_deny_deployment_privilege_escalation if {
 
 # ── RULE 2: mandatory labels ──────────────────────────────────────────────────
 
-test_deny_pod_missing_app_label if {
+test_deny_pod_missing_name_label if {
   input := {
     "request": {
       "kind": {"kind": "Pod"},
       "object": {
-        "metadata": {"name": "no-label-pod", "labels": {"version": "v1"}},
+        "metadata": {
+          "name": "no-name-pod",
+          "labels": {"app.kubernetes.io/instance": "myapp"},
+        },
         "spec": {"containers": [safe_container], "initContainers": []},
       },
     },
@@ -81,12 +87,15 @@ test_deny_pod_missing_app_label if {
   count(deny) > 0
 }
 
-test_deny_pod_missing_version_label if {
+test_deny_pod_missing_instance_label if {
   input := {
     "request": {
       "kind": {"kind": "Pod"},
       "object": {
-        "metadata": {"name": "no-version-pod", "labels": {"app": "myapp"}},
+        "metadata": {
+          "name": "no-instance-pod",
+          "labels": {"app.kubernetes.io/name": "myapp"},
+        },
         "spec": {"containers": [safe_container], "initContainers": []},
       },
     },
@@ -97,8 +106,8 @@ test_deny_pod_missing_version_label if {
 test_deny_deployment_missing_labels if {
   input := mock_deployment(
     "no-labels-deploy",
-    {"app": "myapp"},
-    {"app": "myapp"},
+    {"app.kubernetes.io/name": "myapp"},
+    {"app.kubernetes.io/name": "myapp"},
     [safe_container],
   )
   count(deny) > 0
@@ -107,8 +116,8 @@ test_deny_deployment_missing_labels if {
 test_allow_deployment_with_all_labels if {
   input := mock_deployment(
     "good-deploy",
-    {"app": "myapp", "version": "v1.0.0"},
-    {"app": "myapp", "version": "v1.0.0"},
+    {"app.kubernetes.io/name": "myapp", "app.kubernetes.io/instance": "myapp"},
+    {"app.kubernetes.io/name": "myapp", "app.kubernetes.io/instance": "myapp"},
     [safe_container],
   )
   count(deny) == 0
