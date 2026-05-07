@@ -3,11 +3,12 @@
 # Deployed into: gateway namespace
 # Mode: DB-less (declarative config via ConfigMap)
 
-# DB-less mode natively supported by the chart
+# DB-less mode with declarative config from ConfigMap
 env:
   database: "off"
+  kic: "off"
+  declarative_config: /kong_dbless_config/kong.yaml
 
-# Tell the chart to automatically mount and configure the ConfigMap
 dblessConfig:
   configMap: kong-declarative-config
 
