@@ -1,0 +1,114 @@
+groups:
+  - name: swms_domain_alerts
+    rules:
+
+      # ── CRITICAL: Bin overflowing with no active collection job ──────────────
+      # A bin at 100% fill with no scheduled job is an operational emergency.
+      - alert: BinOverflowingNoJob
+        expr: |
+          bin_fill_level_percent == 100
+          and
+          bin_active_collection_job == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: operations
+        annotations:
+          summary: "Bin {{ $labels.bin_id }} is FULL with no active collection job"
+          description: "Bin {{ $labels.bin_id }} in zone {{ $labels.zone_id }} has reached 100% fill level and has no active collection job assigned. Immediate dispatch required."
+          runbook: "https://wiki.swms.local/runbooks/bin-overflow"
+
+      # ── CRITICAL: Kafka consumer lag too high (F2 processing falling behind) ─
+      # Sustained lag > 10 000 messages means the Flink pipeline is not keeping
+      # up with inbound telemetry — data loss risk after log retention expires.
+      - alert: KafkaConsumerLagCritical
+        expr: kafka_consumer_group_lag > 10000
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Kafka consumer lag is critically high on topic {{ $labels.topic }}"
+          description: "Consumer group {{ $labels.consumergroup }} on topic {{ $labels.topic }} has {{ $value }} unprocessed messages (threshold: 10 000). The Flink processing pipeline may be overloaded or crashed."
+          runbook: "https://wiki.swms.local/runbooks/kafka-lag"
+
+      # ── CRITICAL: Pod in CrashLoopBackOff ────────────────────────────────────
+      # Rapid restart rate indicates the container is crashing immediately.
+      - alert: PodCrashLoopBackOff
+        expr: |
+          rate(kube_pod_container_status_restarts_total{namespace=~"waste-dev|messaging|gateway|auth"}[5m]) * 300 > 1
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Pod {{ $labels.pod }} is in CrashLoopBackOff"
+          description: "Container {{ $labels.container }} in pod {{ $labels.pod }} (namespace {{ $labels.namespace }}) is restarting rapidly. Check logs: kubectl logs {{ $labels.pod }} -n {{ $labels.namespace }} --previous"
+
+      # ── WARNING: Sensor outage — no readings from zone for > 30 minutes ──────
+      # Absence of telemetry from a zone means either the IoT sensor or the
+      # MQTT bridge is down. Fill levels for that zone are now stale.
+      - alert: ZoneSensorOutage
+        expr: |
+          (time() - zone_last_telemetry_timestamp) > 1800
+        for: 0m
+        labels:
+          severity: warning
+          team: iot
+        annotations:
+          summary: "No sensor readings from zone {{ $labels.zone_id }} for > 30 minutes"
+          description: "Zone {{ $labels.zone_id }} last received telemetry {{ $value | humanizeDuration }} ago. Check the IoT sensor and EMQX MQTT bridge for this zone."
+          runbook: "https://wiki.swms.local/runbooks/sensor-outage"
+
+      # ── WARNING: Collection job escalated (no vehicle found) ─────────────────
+      # An ESCALATED job means the scheduler could not assign a vehicle.
+      # Usually caused by all vehicles being full or out of service.
+      - alert: CollectionJobEscalated
+        expr: swms_job_state{state="ESCALATED"} > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: operations
+        annotations:
+          summary: "Collection job {{ $labels.job_id }} has been escalated — no vehicle assigned"
+          description: "Job {{ $labels.job_id }} for zone {{ $labels.zone_id }} could not be assigned to a vehicle and has been escalated. Check vehicle availability in the fleet dashboard."
+
+      # ── WARNING: Vehicle deviation from planned route ─────────────────────────
+      # A driver deviating > 500 m from the planned route for 3+ minutes may
+      # indicate an incorrect route being followed or a vehicle breakdown.
+      - alert: VehicleRouteDeviation
+        expr: vehicle_route_deviation_meters > 500
+        for: 3m
+        labels:
+          severity: warning
+          team: operations
+        annotations:
+          summary: "Vehicle {{ $labels.vehicle_id }} is {{ $value | humanize }}m off route"
+          description: "Vehicle {{ $labels.vehicle_id }} has deviated more than 500m from its planned route for over 3 minutes. Current deviation: {{ $value }}m. Check the route optimizer or contact the driver."
+
+      # ── WARNING: Vault is sealed — all secrets unavailable ───────────────────
+      # A sealed Vault means ESO cannot refresh secrets. Services will continue
+      # with stale cached secrets until they expire, then start failing.
+      - alert: VaultSealed
+        expr: vault_core_unsealed == 0
+        for: 1m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "HashiCorp Vault is SEALED — secrets cannot be synced"
+          description: "The Vault instance is sealed. ExternalSecrets will stop refreshing and pods that restart will fail to obtain secrets. Run the vault-bootstrap Job to unseal: kubectl apply -f auth/vault/vault-policies.yaml -n auth"
+          runbook: "https://wiki.swms.local/runbooks/vault-sealed"
+
+      # ── INFO: ML model retrained and promoted ────────────────────────────────
+      # Fires once when the ML pipeline promotes a newly trained model.
+      # Used to track model version history in Grafana annotations.
+      - alert: MLModelRetrained
+        expr: increase(waste_model_retrained_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: info
+          team: data-science
+        annotations:
+          summary: "ML waste prediction model has been retrained and promoted"
+          description: "A new version of the waste fill prediction model has been trained and is now serving predictions. Model version: {{ $labels.model_version }}. Check the Intelligence Dashboard for accuracy metrics."

@@ -1,24 +1,43 @@
+# Istio Telemetry — Jaeger trace export
+# Dev:  100% sampling (every request traced — useful for debugging)
+# Prod: 10%  sampling (reduce overhead on high-traffic cluster)
+#
+# Apply the correct one for each environment:
+#   Dev:  kubectl apply -f istio-tracing-config.yml -n istio-system
+#   Prod: kubectl apply -f istio-tracing-config-prod.yml -n istio-system
+
+---
+# ── Dev: 100% sampling ──────────────────────────────────────────────
 apiVersion: telemetry.istio.io/v1alpha1
 kind: Telemetry
 metadata:
   name: tracing-config
   namespace: istio-system
+  labels:
+    environment: dev
 spec:
   tracing:
     - providers:
         - name: jaeger
       randomSamplingPercentage: 100.0
+
+
 ---
-apiVersion: v1
-kind: ConfigMap
+# ── Prod: 10% sampling ─────────────────────────────────────────────
+# Apply this instead of the dev config in the waste-prod namespace / prod cluster.
+# Reduces tracing overhead while still capturing 1 in 10 requests.
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
 metadata:
-  name: istio-tracing
+  name: tracing-config-prod
   namespace: istio-system
-data:
-  mesh: |
-    defaultConfig:
-      tracing:
-        zipkin:
-          address: jaeger.monitoring:9411
-        sampling: 100
-    enableTracing: true
+  labels:
+    environment: prod
+  annotations:
+    # Inactive by default — replace tracing-config with this for prod deployments
+    note: "Apply only in production cluster. Delete tracing-config (dev) first."
+spec:
+  tracing:
+    - providers:
+        - name: jaeger
+      randomSamplingPercentage: 10.0
