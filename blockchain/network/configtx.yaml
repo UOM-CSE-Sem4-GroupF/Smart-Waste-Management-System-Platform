@@ -1,0 +1,142 @@
+# Group F SWMS — Hyperledger Fabric Channel Configuration
+# Used by configtxgen inside the fabric-setup Job.
+# Single-org, single-orderer (Raft) dev network.
+#
+# Channel: waste-collection-channel
+# Profile: WasteMgmtChannel
+# MSP IDs: OrdererMSP, WasteMgmtMSP
+#
+# Applied as a ConfigMap by 01-setup-job.yaml.
+# MSP paths resolve inside the setup Job container at /tmp/crypto/.
+
+---
+Organizations:
+  - &OrdererOrg
+    Name: OrdererOrg
+    ID: OrdererMSP
+    MSPDir: /tmp/crypto/ordererOrganizations/swms.local/msp
+    Policies:
+      Readers:
+        Type: Signature
+        Rule: "OR('OrdererMSP.member')"
+      Writers:
+        Type: Signature
+        Rule: "OR('OrdererMSP.member')"
+      Admins:
+        Type: Signature
+        Rule: "OR('OrdererMSP.admin')"
+      Endorsement:
+        Type: Signature
+        Rule: "OR('OrdererMSP.member')"
+
+  - &WasteMgmtOrg
+    Name: WasteMgmtOrg
+    ID: WasteMgmtMSP
+    MSPDir: /tmp/crypto/peerOrganizations/wasteMgmt.swms.local/msp
+    Policies:
+      Readers:
+        Type: Signature
+        Rule: "OR('WasteMgmtMSP.admin', 'WasteMgmtMSP.peer', 'WasteMgmtMSP.client')"
+      Writers:
+        Type: Signature
+        Rule: "OR('WasteMgmtMSP.admin', 'WasteMgmtMSP.client')"
+      Admins:
+        Type: Signature
+        Rule: "OR('WasteMgmtMSP.admin')"
+      Endorsement:
+        Type: Signature
+        Rule: "OR('WasteMgmtMSP.peer')"
+    AnchorPeers:
+      - Host: peer0.blockchain.svc.cluster.local
+        Port: 7051
+
+Capabilities:
+  Channel: &ChannelCapabilities
+    V2_0: true
+  Orderer: &OrdererCapabilities
+    V2_0: true
+  Application: &ApplicationCapabilities
+    V2_5: true
+
+Application: &ApplicationDefaults
+  Organizations:
+  Policies:
+    Readers:
+      Type: ImplicitMeta
+      Rule: "ANY Readers"
+    Writers:
+      Type: ImplicitMeta
+      Rule: "ANY Writers"
+    Admins:
+      Type: ImplicitMeta
+      Rule: "MAJORITY Admins"
+    LifecycleEndorsement:
+      Type: ImplicitMeta
+      Rule: "MAJORITY Endorsement"
+    Endorsement:
+      Type: ImplicitMeta
+      Rule: "MAJORITY Endorsement"
+  Capabilities:
+    <<: *ApplicationCapabilities
+
+Orderer: &OrdererDefaults
+  OrdererType: etcdraft
+  Addresses:
+    - orderer.blockchain.svc.cluster.local:7050
+  EtcdRaft:
+    Consenters:
+      - Host: orderer.blockchain.svc.cluster.local
+        Port: 7050
+        # These cert paths are resolved inside the setup Job container
+        ClientTLSCert: /tmp/crypto/ordererOrganizations/swms.local/orderers/orderer.swms.local/tls/server.crt
+        ServerTLSCert: /tmp/crypto/ordererOrganizations/swms.local/orderers/orderer.swms.local/tls/server.crt
+  BatchTimeout: 2s
+  BatchSize:
+    MaxMessageCount: 10
+    AbsoluteMaxBytes: 99 MB
+    PreferredMaxBytes: 512 KB
+  Organizations:
+  Policies:
+    Readers:
+      Type: ImplicitMeta
+      Rule: "ANY Readers"
+    Writers:
+      Type: ImplicitMeta
+      Rule: "ANY Writers"
+    Admins:
+      Type: ImplicitMeta
+      Rule: "MAJORITY Admins"
+    BlockValidation:
+      Type: ImplicitMeta
+      Rule: "ANY Writers"
+  Capabilities:
+    <<: *OrdererCapabilities
+
+Channel: &ChannelDefaults
+  Policies:
+    Readers:
+      Type: ImplicitMeta
+      Rule: "ANY Readers"
+    Writers:
+      Type: ImplicitMeta
+      Rule: "ANY Writers"
+    Admins:
+      Type: ImplicitMeta
+      Rule: "MAJORITY Admins"
+  Capabilities:
+    <<: *ChannelCapabilities
+
+Profiles:
+  # Application channel genesis block (Fabric 2.5 channel participation API — no system channel)
+  WasteMgmtChannel:
+    <<: *ChannelDefaults
+    Orderer:
+      <<: *OrdererDefaults
+      Organizations:
+        - *OrdererOrg
+      Capabilities: *OrdererCapabilities
+    Application:
+      <<: *ApplicationDefaults
+      Organizations:
+        - *WasteMgmtOrg
+      Capabilities: *ApplicationCapabilities
