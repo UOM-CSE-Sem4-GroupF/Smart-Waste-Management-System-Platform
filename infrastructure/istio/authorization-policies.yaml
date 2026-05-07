@@ -1,7 +1,3 @@
-# Group F — Smart Waste Management System
-# Istio AuthorizationPolicies — Service-to-Service Access Control
-# Owner: Janith (Security & Mesh Architect)
-#
 # PURPOSE:
 #   These AuthorizationPolicies implement the principle of least-privilege for
 #   service-to-service communication within the mesh. The global-default-deny
@@ -11,7 +7,7 @@
 #   Rules are derived from the actual service call graph in the values-dev.yaml
 #   files for each service (ENV vars, URLs, Kafka broker references).
 #
-# REFERENCE: security.md — Task: Istio AuthorizationPolicies
+
 
 # =============================================================================
 # RULE 1 — Orchestrator → Scheduler (internal API)
