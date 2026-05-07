@@ -40,6 +40,6 @@ claude.md
 
 # Helm
 # ----
-**/charts/*.tgz
-**/charts/
+# Chart.lock is machine-specific; charts/*.tgz MUST stay in git
+# because ArgoCD needs packaged subchart dependencies to render templates.
 **/Chart.lock

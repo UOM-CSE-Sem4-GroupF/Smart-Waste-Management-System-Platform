@@ -43,13 +43,13 @@ on:
         type: string
 
       dockerfile-path:
-        description: Path to Dockerfile relative to context (default: Dockerfile)
+        description: "Path to Dockerfile relative to context (default: Dockerfile)"
         required: false
         default: Dockerfile
         type: string
 
       context:
-        description: Docker build context directory (default: .)
+        description: "Docker build context directory (default: .)"
         required: false
         default: .
         type: string
@@ -64,7 +64,7 @@ on:
         type: string
 
       platforms:
-        description: Docker build platforms (default: linux/amd64)
+        description: "Docker build platforms (default: linux/amd64)"
         required: false
         default: linux/amd64
         type: string
