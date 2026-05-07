@@ -63,8 +63,30 @@ deny[msg] {
   msg := sprintf("Deployment '%s': container '%s' must define a readinessProbe", [input.metadata.name, container.name])
 }
 
+# ── Mandatory labels (app, version) ──────────────────────────────────────────
+# Required for Istio selectors, Kiali service graph, and Prometheus dashboards.
+
+required_labels := {"app", "version"}
+
+deny[msg] {
+  input.kind == "Deployment"
+  provided := {label | input.spec.template.metadata.labels[label]}
+  missing := required_labels - provided
+  count(missing) > 0
+  msg := sprintf("Deployment '%s': pod template is missing required labels: %v", [input.metadata.name, missing])
+}
+
+deny[msg] {
+  input.kind == "Deployment"
+  provided := {label | input.metadata.labels[label]}
+  missing := required_labels - provided
+  count(missing) > 0
+  msg := sprintf("Deployment '%s': metadata is missing required labels: %v", [input.metadata.name, missing])
+}
+
 # ── No :latest image tags ─────────────────────────────────────────────────────
-# Argo CD always provides a pinned tag — :latest indicates a misconfigured deploy.
+# Argo CD Image Updater replaces :latest with a pinned digest before deploy.
+# :latest in a committed values file means Image Updater hasn't run yet.
 
 deny[msg] {
   input.kind == "Deployment"
