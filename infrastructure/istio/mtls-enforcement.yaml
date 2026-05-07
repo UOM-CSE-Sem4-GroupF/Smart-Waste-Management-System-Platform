@@ -1,0 +1,44 @@
+# Group F — Smart Waste Management System
+# Namespace-scoped mTLS Enforcement
+# Owner: Janith (Security & Mesh Architect)
+#
+# PURPOSE:
+#   Although the global PeerAuthentication in istio-system enforces STRICT mTLS
+#   mesh-wide, these namespace-scoped policies provide an explicit, auditable
+#   declaration that waste-dev and messaging namespaces enforce STRICT mTLS.
+#   Namespace-level policies take precedence over mesh-level policies, ensuring
+#   that no accidental permissive overrides can be applied to these namespaces.
+#
+# REFERENCE: security.md — Task: mTLS Enforcement
+
+---
+# PeerAuthentication for the waste-dev namespace
+# Enforces STRICT mTLS: all sidecars in this namespace must use mTLS.
+# Plaintext traffic (non-mTLS) will be rejected.
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: waste-dev-mtls-strict
+  namespace: waste-dev
+  labels:
+    app: istio-security
+    managed-by: security-mesh-architect
+spec:
+  mtls:
+    mode: STRICT
+
+---
+# PeerAuthentication for the messaging namespace
+# Enforces STRICT mTLS: all sidecars in this namespace must use mTLS.
+# This covers Kafka and any other messaging-layer services.
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: messaging-mtls-strict
+  namespace: messaging
+  labels:
+    app: istio-security
+    managed-by: security-mesh-architect
+spec:
+  mtls:
+    mode: STRICT

@@ -1,0 +1,33 @@
+# Group F — Smart Waste Management System
+# Gitleaks configuration
+# Allowlists known dev-only credentials that are intentionally in config files.
+# These values are local-dev defaults only — never used in production.
+
+[allowlist]
+  description = "Intentional dev-only credentials in config files"
+  regexes = [
+    # Dev password pattern used across all services
+    "swms-[a-z]+-dev-[0-9]{4}",
+    # Vault dev root token (dev-mode Vault, not a real secret)
+    "swms-vault-dev-root-token",
+    # PostgreSQL dev passwords
+    "swms-kc-dev-2026",
+    "swms-pg-dev-2026",
+    "waste_admin_password",
+    # InfluxDB dev token
+    "my-super-token",
+    # Kafka dev SASL password seeded by vault bootstrap
+    "QA7aKGtPHV",
+  ]
+  paths = [
+    # All Helm values files are config — not secrets storage
+    '''.*values.*\.yaml''',
+    # Vault bootstrap seeds dev secrets intentionally
+    "auth/vault/vault-policies.yaml",
+    # Keycloak realm export contains dev user hashes
+    "auth/keycloak/realm-export.json",
+    # Documentation files
+    '''.*\.md''',
+    "CLAUDE.md",
+    "CLAUDE_guide.md",
+  ]
