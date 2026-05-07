@@ -159,66 +159,49 @@ data:
     echo "  All secrets seeded."
 
     # ── Policies ─────────────────────────────────────────────────
+    # NOTE: printf is used instead of heredoc (<<EOF) because heredoc
+    # terminators at column 0 break YAML block-scalar parsing.
     echo "[6/7] Writing policies..."
 
-    vault policy write platform-admin - <<EOF
-    path "secret/data/swms/*" { capabilities = ["create","read","update","delete","list"] }
-    path "secret/metadata/swms/*" { capabilities = ["list","read"] }
-EOF
+    printf 'path "secret/data/swms/*" { capabilities = ["create","read","update","delete","list"] }\npath "secret/metadata/swms/*" { capabilities = ["list","read"] }\n' \
+      | vault policy write platform-admin -
 
-    vault policy write kafka-consumer - <<EOF
-    path "secret/data/swms/kafka" { capabilities = ["read"] }
-EOF
+    printf 'path "secret/data/swms/kafka" { capabilities = ["read"] }\n' \
+      | vault policy write kafka-consumer -
 
-    vault policy write keycloak-service - <<EOF
-    path "secret/data/swms/keycloak" { capabilities = ["read"] }
-    path "secret/data/swms/postgres" { capabilities = ["read"] }
-EOF
+    printf 'path "secret/data/swms/keycloak" { capabilities = ["read"] }\npath "secret/data/swms/postgres" { capabilities = ["read"] }\n' \
+      | vault policy write keycloak-service -
 
-    vault policy write eso-service - <<EOF
-    path "secret/data/swms/*" { capabilities = ["read"] }
-EOF
+    printf 'path "secret/data/swms/*" { capabilities = ["read"] }\n' \
+      | vault policy write eso-service -
 
     # Per-service policies — least-privilege: each service reads only what it needs
-    vault policy write bin-status-service - <<EOF
-    path "secret/data/swms/kafka" { capabilities = ["read"] }
-EOF
+    printf 'path "secret/data/swms/kafka" { capabilities = ["read"] }\n' \
+      | vault policy write bin-status-service -
 
-    vault policy write notification-service - <<EOF
-    path "secret/data/swms/kafka" { capabilities = ["read"] }
-EOF
+    printf 'path "secret/data/swms/kafka" { capabilities = ["read"] }\n' \
+      | vault policy write notification-service -
 
-    vault policy write scheduler-service - <<EOF
-    path "secret/data/swms/kafka" { capabilities = ["read"] }
-EOF
+    printf 'path "secret/data/swms/kafka" { capabilities = ["read"] }\n' \
+      | vault policy write scheduler-service -
 
-    vault policy write workflow-orchestrator - <<EOF
-    path "secret/data/swms/kafka"       { capabilities = ["read"] }
-    path "secret/data/swms/hyperledger" { capabilities = ["read"] }
-EOF
+    printf 'path "secret/data/swms/kafka" { capabilities = ["read"] }\npath "secret/data/swms/hyperledger" { capabilities = ["read"] }\n' \
+      | vault policy write workflow-orchestrator -
 
-    vault policy write fastapi-ml-service - <<EOF
-    path "secret/data/swms/postgres-waste" { capabilities = ["read"] }
-    path "secret/data/swms/influxdb"       { capabilities = ["read"] }
-EOF
+    printf 'path "secret/data/swms/postgres-waste" { capabilities = ["read"] }\npath "secret/data/swms/influxdb" { capabilities = ["read"] }\n' \
+      | vault policy write fastapi-ml-service -
 
-    vault policy write flink-processor - <<EOF
-    path "secret/data/swms/kafka"          { capabilities = ["read"] }
-    path "secret/data/swms/influxdb"       { capabilities = ["read"] }
-    path "secret/data/swms/postgres-waste" { capabilities = ["read"] }
-EOF
+    printf 'path "secret/data/swms/kafka" { capabilities = ["read"] }\npath "secret/data/swms/influxdb" { capabilities = ["read"] }\npath "secret/data/swms/postgres-waste" { capabilities = ["read"] }\n' \
+      | vault policy write flink-processor -
 
-    vault policy write ci-pipeline - <<EOF
-    path "secret/data/swms/*"      { capabilities = ["read"] }
-    path "secret/metadata/swms/*"  { capabilities = ["list","read"] }
-EOF
+    printf 'path "secret/data/swms/*" { capabilities = ["read"] }\npath "secret/metadata/swms/*" { capabilities = ["list","read"] }\n' \
+      | vault policy write ci-pipeline -
 
     # Hyperledger service: read-only access to Fabric connection config
-    vault policy write hyperledger-service - <<EOF
-    path "secret/data/swms/hyperledger" { capabilities = ["read"] }
-EOF
-    echo "  ✅ Per-service policies created."
+    printf 'path "secret/data/swms/hyperledger" { capabilities = ["read"] }\n' \
+      | vault policy write hyperledger-service -
 
+    echo "  ✅ Per-service policies created."
     echo "  Policies written."
 
     # ── Kubernetes auth ───────────────────────────────────────────
