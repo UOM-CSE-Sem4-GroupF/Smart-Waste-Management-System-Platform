@@ -1,0 +1,33 @@
+# Group F SWMS — Hyperledger Fabric Crypto Configuration
+# Used by the fabric-setup Job (cryptogen tool) to generate all TLS + MSP material.
+# Single-org dev network — NOT for production.
+#
+# Output layout (written to /tmp/crypto in the setup Job):
+#   ordererOrganizations/swms.local/
+#   peerOrganizations/wasteMgmt.swms.local/
+#
+# Applied as a ConfigMap by 01-setup-job.yaml.
+
+OrdererOrgs:
+  - Name: Orderer
+    Domain: swms.local
+    EnableNodeOUs: true
+    Specs:
+      - Hostname: orderer
+        SANS:
+          - orderer.blockchain.svc.cluster.local
+          - localhost
+          - 127.0.0.1
+
+PeerOrgs:
+  - Name: WasteMgmt
+    Domain: wasteMgmt.swms.local
+    EnableNodeOUs: true
+    Template:
+      Count: 1
+      SANS:
+        - "{{.Hostname}}.blockchain.svc.cluster.local"
+        - localhost
+        - 127.0.0.1
+    Users:
+      Count: 1
