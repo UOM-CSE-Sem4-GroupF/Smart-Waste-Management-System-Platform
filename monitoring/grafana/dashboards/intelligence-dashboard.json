@@ -1,0 +1,35 @@
+{
+  "title": "Intelligence Dashboard",
+  "uid": "intel-dashboard",
+  "tags": ["business", "kpi"],
+  "panels": [
+    {
+      "title": "Bin Collection Requests (24h)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [{
+        "expr": "increase(bin_collection_requests_total[24h])"
+      }]
+    },
+    {
+      "title": "Successful vs Failed Collections",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 4 },
+      "targets": [
+        { "expr": "bin_collection_success_total", "legendFormat": "Success" },
+        { "expr": "bin_collection_failed_total", "legendFormat": "Failed" }
+      ]
+    },
+    {
+      "title": "Orchestrator Queue Depth",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 8, "y": 4 },
+      "targets": [{
+        "expr": "kafka_consumer_group_lag",
+        "legendFormat": "Queue lag - {{ topic }}"
+      }]
+    }
+  ],
+  "schemaVersion": 30,
+  "version": 1
+}
