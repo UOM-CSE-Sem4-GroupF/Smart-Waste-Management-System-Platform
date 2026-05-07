@@ -1,0 +1,112 @@
+{
+  "title": "Performance Dashboard",
+  "uid": "perf-dashboard",
+  "tags": ["performance", "resources"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "panels": [
+    {
+      "title": "CPU Usage per Pod (waste-dev)",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [{
+        "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"waste-dev\", container!=\"\", container!=\"POD\"}[5m])) by (pod)",
+        "legendFormat": "{{ pod }}"
+      }],
+      "yaxes": [{ "format": "percentunit", "label": "CPU Cores" }]
+    },
+    {
+      "title": "Memory Usage per Pod (waste-dev)",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [{
+        "expr": "sum(container_memory_working_set_bytes{namespace=\"waste-dev\", container!=\"\", container!=\"POD\"}) by (pod)",
+        "legendFormat": "{{ pod }}"
+      }],
+      "yaxes": [{ "format": "bytes", "label": "Memory" }]
+    },
+    {
+      "title": "CPU Usage % of Limit per Pod",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [{
+        "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"waste-dev\", container!=\"\", container!=\"POD\"}[5m])) by (pod) / sum(kube_pod_container_resource_limits{namespace=\"waste-dev\", resource=\"cpu\"}) by (pod) * 100",
+        "legendFormat": "{{ pod }}"
+      }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "thresholds": { "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 90 }] } }
+    },
+    {
+      "title": "Memory Usage % of Limit per Pod",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [{
+        "expr": "sum(container_memory_working_set_bytes{namespace=\"waste-dev\", container!=\"\", container!=\"POD\"}) by (pod) / sum(kube_pod_container_resource_limits{namespace=\"waste-dev\", resource=\"memory\"}) by (pod) * 100",
+        "legendFormat": "{{ pod }}"
+      }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "thresholds": { "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 90 }] } }
+    },
+    {
+      "title": "Kafka Producer Throughput (messages/sec per topic)",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [{
+        "expr": "sum(rate(kafka_producer_topic_record_send_total[5m])) by (topic)",
+        "legendFormat": "produced — {{ topic }}"
+      }],
+      "yaxes": [{ "format": "short", "label": "msg/sec" }]
+    },
+    {
+      "title": "Kafka Consumer Throughput (messages/sec per group)",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "expr": "sum(rate(kafka_consumer_fetch_manager_records_consumed_total[5m])) by (topic)",
+          "legendFormat": "consumed — {{ topic }}"
+        },
+        {
+          "expr": "sum(kafka_consumer_group_lag) by (topic)",
+          "legendFormat": "lag — {{ topic }}"
+        }
+      ],
+      "yaxes": [{ "format": "short", "label": "msg/sec" }]
+    },
+    {
+      "title": "Kong Gateway — Network I/O (bytes/sec)",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "expr": "sum(rate(container_network_receive_bytes_total{namespace=\"gateway\"}[5m]))",
+          "legendFormat": "received"
+        },
+        {
+          "expr": "sum(rate(container_network_transmit_bytes_total{namespace=\"gateway\"}[5m]))",
+          "legendFormat": "transmitted"
+        }
+      ],
+      "yaxes": [{ "format": "Bps", "label": "Bytes/sec" }]
+    },
+    {
+      "title": "Kong Gateway — Active Connections",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 24 },
+      "targets": [{
+        "expr": "sum(kong_nginx_connections_total{state=\"active\"})",
+        "legendFormat": "Active"
+      }]
+    },
+    {
+      "title": "Kong Gateway — Request Rate (RPS)",
+      "type": "graph",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 24 },
+      "targets": [{
+        "expr": "sum(rate(kong_http_requests_total[1m])) by (service)",
+        "legendFormat": "{{ service }}"
+      }],
+      "yaxes": [{ "format": "short", "label": "req/sec" }]
+    }
+  ],
+  "schemaVersion": 30,
+  "version": 1
+}

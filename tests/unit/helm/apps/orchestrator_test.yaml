@@ -1,0 +1,33 @@
+suite: orchestrator chart values
+templates:
+  - charts/base-service/templates/deployment.yaml
+  - charts/base-service/templates/external-secret.yaml
+values:
+  - values-dev.yaml
+tests:
+  - it: should use orchestrator image repository
+    template: charts/base-service/templates/deployment.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: "ghcr.io/uom-cse-sem4-groupf/orchestrator:.*"
+
+  - it: should expose port 3001
+    template: charts/base-service/templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 3001
+
+  - it: should render ExternalSecret including POSTGRES_PASSWORD
+    template: charts/base-service/templates/external-secret.yaml
+    asserts:
+      - isKind:
+          of: ExternalSecret
+      - contains:
+          path: spec.data
+          content:
+            secretKey: POSTGRES_PASSWORD
+            remoteRef:
+              key: swms/postgres-waste
+              property: password

@@ -1,0 +1,61 @@
+# Production overrides for core-api (Node.js, port 8001).
+base-service:
+  imagePullSecrets:
+    - name: ghcr-pull-secret
+
+  image:
+    repository: ghcr.io/uom-cse-sem4-groupf/core-api
+    tag: latest
+    pullPolicy: Always
+
+  replicaCount: 2
+
+  service:
+    port: 8001
+
+  resources:
+    requests:
+      cpu: 150m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1024Mi
+
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 70
+
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+  livenessProbe:
+    enabled: true
+    httpGet:
+      port: 8001
+      path: /health
+
+  readinessProbe:
+    enabled: true
+    httpGet:
+      port: 8001
+      path: /ready
+
+  # Dev-mode command override removed.
+  # DATABASE_URL is injected at runtime via the Vault agent sidecar using
+  # the POSTGRES_PASSWORD ExternalSecret below.
+  env:
+    PORT: "8001"
+    NODE_ENV: "production"
+    HOST: "0.0.0.0"
+
+  externalSecret:
+    enabled: true
+    vaultPath: swms/postgres-waste
+    secretStoreName: vault-backend
+    secretStoreKind: ClusterSecretStore
+    data:
+      - secretKey: POSTGRES_PASSWORD
+        remoteRef: { key: swms/postgres-waste, property: password }

@@ -1,0 +1,98 @@
+# OWASP ZAP — Weekly Penetration Test
+# Target: https://api.swms.live (Kong Gateway)
+#
+# Runs every Monday at 02:00 UTC. Can also be triggered manually via
+# GitHub Actions UI (workflow_dispatch).
+#
+# Results are saved to security/reports/ and uploaded as a GitHub artifact.
+# A summary is posted as a GitHub issue if HIGH/CRITICAL alerts are found.
+
+name: OWASP ZAP Weekly Scan
+
+on:
+  schedule:
+    - cron: "0 2 * * 1"   # every Monday at 02:00 UTC
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Target URL to scan"
+        required: false
+        default: "https://api.swms.live"
+
+concurrency:
+  group: zap-scan
+  cancel-in-progress: true
+
+jobs:
+  zap-baseline:
+    name: ZAP Baseline Scan
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write        # open issue on HIGH/CRITICAL findings
+      contents: write      # commit scan reports back to repo
+
+    env:
+      TARGET_URL: ${{ github.event.inputs.target || 'https://api.swms.live' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create reports directory
+        run: mkdir -p security/reports
+
+      # Baseline scan: passive only (no active attack). Safe for production.
+      # Use zap-full-scan for active testing against a staging environment.
+      - name: Run OWASP ZAP baseline scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: ${{ env.TARGET_URL }}
+          rules_file_name: .github/zap-rules.tsv
+          cmd_options: >-
+            -J security/reports/zap-report.json
+            -w security/reports/zap-report.md
+            -r security/reports/zap-report.html
+          fail_action: false   # don't fail the job — we report via issue instead
+
+      - name: Upload ZAP reports as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zap-scan-${{ github.run_number }}
+          path: security/reports/
+          retention-days: 90
+
+      - name: Check for HIGH/CRITICAL alerts and open issue
+        if: always()
+        run: |
+          if [ -f security/reports/zap-report.json ]; then
+            HIGH=$(python3 -c "
+          import json, sys
+          data = json.load(open('security/reports/zap-report.json'))
+          sites = data.get('site', [])
+          count = sum(
+              1 for site in sites
+              for alert in site.get('alerts', [])
+              if alert.get('riskcode') in ['3', '4']   # HIGH=3, CRITICAL=4
+          )
+          print(count)
+          " 2>/dev/null || echo "0")
+            echo "HIGH/CRITICAL alerts found: $HIGH"
+            echo "HIGH_COUNT=$HIGH" >> $GITHUB_ENV
+          else
+            echo "HIGH_COUNT=0" >> $GITHUB_ENV
+          fi
+
+      - name: Open GitHub issue for HIGH/CRITICAL findings
+        if: env.HIGH_COUNT != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const count = process.env.HIGH_COUNT;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[ZAP] ${count} HIGH/CRITICAL vulnerabilities found — ${new Date().toISOString().split('T')[0]}`,
+              body: `## OWASP ZAP Scan Results\n\n**Target:** ${{ env.TARGET_URL }}\n**Run:** ${runUrl}\n\n⚠️ **${count} HIGH or CRITICAL alert(s) detected.**\n\nDownload the full report from the workflow artifacts.\n\n### Next steps\n1. Review \`security/reports/zap-report.md\` in the artifact\n2. Triage each finding — confirm whether it is a true positive\n3. Open a fix PR and reference this issue`,
+              labels: ["security", "zap-scan"],
+            });

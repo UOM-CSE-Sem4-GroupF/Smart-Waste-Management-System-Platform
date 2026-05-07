@@ -56,3 +56,23 @@ variable "kafka_sasl_password" {
   default     = "swms-kafka-dev-2026"
   sensitive   = true
 }
+
+variable "jwt_secret" {
+  description = "JWT signing secret for application services. Pass via TF_VAR_jwt_secret or terraform.tfvars."
+  type        = string
+  sensitive   = true
+}
+
+variable "mapbox_api_key" {
+  description = "Mapbox API key for frontend map tiles."
+  type        = string
+  sensitive   = true
+  default     = "pk.placeholder.mapbox.key"
+}
+
+variable "postgres_password" {
+  description = "PostgreSQL waste_admin password. Should match the value seeded in Vault at swms/postgres-waste."
+  type        = string
+  sensitive   = true
+  default     = "waste_admin_password"
+}

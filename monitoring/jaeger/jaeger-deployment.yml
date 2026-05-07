@@ -26,7 +26,11 @@ spec:
             - name: COLLECTOR_OTLP_ENABLED
               value: "true"
             - name: SPAN_STORAGE_TYPE
-              value: "memory"
+              value: "elasticsearch"
+            - name: ES_SERVER_URLS
+              value: "http://elasticsearch.monitoring:9200"
+            - name: ES_INDEX_PREFIX
+              value: "jaeger"
 ---
 apiVersion: v1
 kind: Service

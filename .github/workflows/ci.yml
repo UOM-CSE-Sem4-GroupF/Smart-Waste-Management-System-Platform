@@ -6,7 +6,8 @@
 # shell scripts, and Markdown in this repo on every PR and push to main.
 #
 # Required status checks for branch protection on main:
-#   yamllint, helm-lint, kubeconform, shellcheck
+#   yamllint, helm-lint, kubeconform, shellcheck,
+#   helm-unittest, conftest, terraform-lint, secret-scan
 
 name: Platform CI
 
@@ -174,3 +175,151 @@ jobs:
           check-modified-files-only: "no"
           config-file: ".github/mlc-config.json"
         continue-on-error: true  # Non-blocking — external links may be temporarily down
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Helm unit tests for the base-service chart
+  # ────────────────────────────────────────────────────────────────────────────
+  helm-unittest:
+    name: Helm Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
+
+      - name: Install helm-unittest plugin
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest
+
+      - name: Run base-service chart unit tests
+        run: |
+          helm unittest helm/charts/base-service/ \
+            --file "tests/*.yaml" \
+            --output-type Standard
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # OPA/Conftest policy tests on rendered Helm output
+  # ────────────────────────────────────────────────────────────────────────────
+  conftest:
+    name: Conftest Policy Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
+
+      - name: Install conftest
+        run: |
+          curl -sSL \
+            https://github.com/open-policy-agent/conftest/releases/download/v0.56.0/conftest_0.56.0_Linux_x86_64.tar.gz \
+            | tar xz
+          sudo mv conftest /usr/local/bin/
+
+      - name: Render base-service chart
+        # Use a pinned tag to simulate what Argo CD deploys (never :latest in prod)
+        run: |
+          helm template swms-svc helm/charts/base-service/ \
+            --set image.tag=1.0.0 \
+            > /tmp/base-service-rendered.yaml
+
+      - name: Run policy tests
+        run: |
+          conftest test /tmp/base-service-rendered.yaml \
+            --policy policy/
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Terraform formatting and validation
+  # ────────────────────────────────────────────────────────────────────────────
+  terraform-lint:
+    name: Terraform Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.7"
+
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive terraform/do/
+
+      - name: Terraform init (syntax check only — no backend)
+        run: terraform -chdir=terraform/do init -backend=false
+
+      - name: Terraform validate
+        run: terraform -chdir=terraform/do validate
+
+      - name: Install tflint
+        run: |
+          curl -sSL \
+            https://github.com/terraform-linters/tflint/releases/latest/download/tflint_linux_amd64.zip \
+            -o tflint.zip
+          unzip tflint.zip && sudo mv tflint /usr/local/bin/
+
+      - name: Run tflint
+        run: |
+          cd terraform/do
+          tflint --init
+          tflint
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Secret scanning — blocks PRs that accidentally commit real credentials
+  # ────────────────────────────────────────────────────────────────────────────
+  secret-scan:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history so gitleaks can scan all commits in the PR
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Trivy — container image + IaC misconfiguration scanning
+  # Blocks merge on HIGH or CRITICAL findings.
+  # ────────────────────────────────────────────────────────────────────────────
+  trivy-scan:
+    name: Trivy Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write   # upload SARIF results to GitHub Security tab
+    steps:
+      - uses: actions/checkout@v4
+
+      # Scan 1: IaC misconfigurations in Helm charts and K8s manifests
+      - name: Trivy IaC scan (Helm + manifests)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          format: sarif
+          output: trivy-iac-results.sarif
+        continue-on-error: false
+
+      # Scan 2: Container images referenced in values-dev.yaml
+      # Scans the base-service image as a representative platform image.
+      - name: Trivy image scan (flink-processor)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: image
+          image-ref: flink:1.20.0-java17
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          format: sarif
+          output: trivy-image-results.sarif
+        continue-on-error: true   # image may not be pullable in CI — non-blocking
+
+      - name: Upload IaC SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-iac-results.sarif
+          category: trivy-iac

@@ -1,0 +1,238 @@
+# Group F SWMS — Chaincode Lifecycle Deploy Job
+# Owner: F4 Platform Team
+#
+# Executes the Fabric 2.x chaincode lifecycle:
+#   1. Package a CCaaS connection descriptor (points to collection-record-cc service)
+#   2. Install the package on peer0  → get the package ID
+#   3. Patch collection-record-cc Deployment with the real CHAINCODE_ID
+#   4. Approve the chaincode definition for WasteMgmtOrg
+#   5. Commit the chaincode definition to waste-collection-channel
+#   6. Verify with a test query (QueryRecord on a synthetic job_id)
+#
+# The ServiceAccount fabric-setup (00-rbac.yaml) is reused — it already has
+# PATCH permission on Deployments in the blockchain namespace.
+#
+# Prerequisites: orderer, peer0, collection-record-cc Deployment must be running.
+# Apply: kubectl apply -f blockchain/network/06-chaincode-deploy-job.yaml
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chaincode-deploy-script
+  namespace: blockchain
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+data:
+  deploy.sh: |
+    #!/bin/bash
+    set -euo pipefail
+
+    CHANNEL_ID="waste-collection-channel"
+    CC_NAME="collection-record"
+    CC_VERSION="1.0"
+    CC_SEQUENCE="1"
+    CC_LABEL="${CC_NAME}_${CC_VERSION}"
+    CC_SERVICE_ADDR="collection-record-cc.blockchain.svc.cluster.local:7052"
+
+    ORDERER_ADDR="orderer.blockchain.svc.cluster.local:7050"
+    PEER_ADDR="peer0.blockchain.svc.cluster.local:7051"
+    ADMIN_MSP=/var/hyperledger/admin/msp
+    PEER_TLS_CA=/var/hyperledger/admin/tls/ca.crt
+    ORDERER_TLS_CA=/var/hyperledger/admin/tls/orderer-ca.crt
+
+    APISERVER=https://kubernetes.default.svc
+    TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+    CACERT_K8S=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    NS=blockchain
+
+    # Common peer env
+    export CORE_PEER_LOCALMSPID="WasteMgmtMSP"
+    export CORE_PEER_MSPCONFIGPATH="$ADMIN_MSP"
+    export CORE_PEER_ADDRESS="$PEER_ADDR"
+    export CORE_PEER_TLS_ENABLED="true"
+    export CORE_PEER_TLS_ROOTCERT_FILE="$PEER_TLS_CA"
+
+    echo "=============================================="
+    echo " Chaincode Deploy: $CC_LABEL"
+    echo " Channel:  $CHANNEL_ID"
+    echo " CCaaS at: $CC_SERVICE_ADDR"
+    echo "=============================================="
+
+    # ── 1. Create CCaaS connection package ───────────────────────────
+    echo "[1/6] Creating CCaaS connection package..."
+    mkdir -p /tmp/ccpkg
+
+    # connection.json tells the peer where to find the running chaincode server
+    cat > /tmp/connection.json << EOF
+    {
+      "address": "${CC_SERVICE_ADDR}",
+      "dial_timeout": "10s",
+      "tls_required": false
+    }
+    EOF
+
+    # metadata.json marks this as a CCaaS package
+    cat > /tmp/metadata.json << EOF
+    {
+      "type": "ccaas",
+      "label": "${CC_LABEL}"
+    }
+    EOF
+
+    tar czf /tmp/code.tar.gz -C /tmp connection.json
+    tar czf /tmp/${CC_NAME}.tar.gz -C /tmp code.tar.gz metadata.json
+    echo "  Package: /tmp/${CC_NAME}.tar.gz"
+
+    # ── 2. Install chaincode on peer ─────────────────────────────────
+    echo "[2/6] Installing chaincode package on peer0..."
+    peer lifecycle chaincode install /tmp/${CC_NAME}.tar.gz
+    echo "  Package installed."
+
+    # ── 3. Get package ID ────────────────────────────────────────────
+    echo "[3/6] Retrieving package ID..."
+    CC_PACKAGE_ID=$(peer lifecycle chaincode queryinstalled --output json \
+      | python3 -c "
+    import json, sys
+    data = json.load(sys.stdin)
+    for cc in data.get('installed_chaincodes', []):
+        if cc['label'] == '${CC_LABEL}':
+            print(cc['package_id'])
+            break
+    ")
+    if [ -z "$CC_PACKAGE_ID" ]; then
+      echo "ERROR: Could not find package ID for label ${CC_LABEL}"
+      exit 1
+    fi
+    echo "  Package ID: $CC_PACKAGE_ID"
+
+    # ── 4. Patch chaincode server Deployment with real package ID ────
+    echo "[4/6] Patching collection-record-cc Deployment with CHAINCODE_ID..."
+    curl -s -o /dev/null \
+      --cacert "$CACERT_K8S" \
+      -H "Authorization: Bearer $TOKEN" \
+      -H "Content-Type: application/strategic-merge-patch+json" \
+      -X PATCH \
+      "$APISERVER/apis/apps/v1/namespaces/$NS/deployments/collection-record-cc" \
+      -d "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"chaincode\",\"env\":[{\"name\":\"CHAINCODE_ID\",\"value\":\"$CC_PACKAGE_ID\"},{\"name\":\"CHAINCODE_SERVER_ADDRESS\",\"value\":\"0.0.0.0:7052\"}]}]}}}}"
+    echo "  Deployment patched. Waiting 15s for chaincode server to restart..."
+    sleep 15
+
+    # ── 5. Approve chaincode definition for WasteMgmtOrg ────────────
+    echo "[5/6] Approving chaincode definition for WasteMgmtOrg..."
+    peer lifecycle chaincode approveformyorg \
+      -o "$ORDERER_ADDR" \
+      --ordererTLSHostnameOverride "orderer.swms.local" \
+      --tls \
+      --cafile "$ORDERER_TLS_CA" \
+      --channelID "$CHANNEL_ID" \
+      --name "$CC_NAME" \
+      --version "$CC_VERSION" \
+      --package-id "$CC_PACKAGE_ID" \
+      --sequence "$CC_SEQUENCE" \
+      --waitForEvent
+    echo "  Approved."
+
+    # ── 6. Commit chaincode definition ──────────────────────────────
+    echo "[6/6] Committing chaincode definition to channel..."
+    peer lifecycle chaincode commit \
+      -o "$ORDERER_ADDR" \
+      --ordererTLSHostnameOverride "orderer.swms.local" \
+      --tls \
+      --cafile "$ORDERER_TLS_CA" \
+      --channelID "$CHANNEL_ID" \
+      --name "$CC_NAME" \
+      --version "$CC_VERSION" \
+      --sequence "$CC_SEQUENCE" \
+      --peerAddresses "$PEER_ADDR" \
+      --tlsRootCertFiles "$PEER_TLS_CA" \
+      --waitForEvent
+    echo "  Chaincode committed and ready."
+
+    # Verify commit
+    peer lifecycle chaincode querycommitted \
+      --channelID "$CHANNEL_ID" \
+      --name "$CC_NAME" \
+      --output json
+
+    echo ""
+    echo "=============================================="
+    echo " Chaincode '$CC_NAME' v$CC_VERSION is live!"
+    echo " Package ID: $CC_PACKAGE_ID"
+    echo " Channel:    $CHANNEL_ID"
+    echo ""
+    echo " Next: apply blockchain/api-wrapper/k8s/"
+    echo "=============================================="
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: fabric-chaincode-deploy
+  namespace: blockchain
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    component: chaincode-deploy
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: fabric-chaincode-deploy
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: fabric-setup
+      initContainers:
+        - name: setup-admin-msp
+          image: busybox:1.36
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              mkdir -p /var/hyperledger/admin/msp
+              tar xzf /etc/fabric/admin-msp/msp.tar.gz -C /var/hyperledger/admin/msp
+              KEYFILE=$(ls /var/hyperledger/admin/msp/keystore/)
+              cp "/var/hyperledger/admin/msp/keystore/$KEYFILE" /var/hyperledger/admin/msp/keystore/key.pem
+              CERTFILE=$(ls /var/hyperledger/admin/msp/signcerts/)
+              cp "/var/hyperledger/admin/msp/signcerts/$CERTFILE" /var/hyperledger/admin/msp/signcerts/cert.pem
+              echo "Admin MSP ready."
+          volumeMounts:
+            - name: admin-msp-secret
+              mountPath: /etc/fabric/admin-msp
+            - name: workdir
+              mountPath: /var/hyperledger/admin
+      containers:
+        - name: chaincode-deploy
+          image: hyperledger/fabric-tools:2.5
+          command: ["/bin/bash", "/scripts/deploy.sh"]
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 100m
+            limits:
+              memory: 256Mi
+              cpu: 300m
+          volumeMounts:
+            - name: chaincode-deploy-script
+              mountPath: /scripts
+            - name: workdir
+              mountPath: /var/hyperledger/admin
+            - name: admin-tls-secret
+              mountPath: /var/hyperledger/admin/tls
+              readOnly: true
+      volumes:
+        - name: chaincode-deploy-script
+          configMap:
+            name: chaincode-deploy-script
+            defaultMode: 0755
+        - name: admin-msp-secret
+          secret:
+            secretName: fabric-admin-msp
+        - name: admin-tls-secret
+          secret:
+            secretName: fabric-admin-tls
+        - name: workdir
+          emptyDir: {}

@@ -1,0 +1,44 @@
+# Group F SWMS — Hyperledger Fabric Persistent Volume Claims
+# Owner: F4 Platform Team
+#
+# orderer-data-pvc  — orderer block ledger (ReadWriteOnce, 5Gi)
+# peer-data-pvc     — peer block ledger + state DB (ReadWriteOnce, 5Gi)
+#
+# Crypto material is stored in K8s Secrets (created by 01-setup-job.yaml),
+# NOT in PVCs, so ReadWriteMany is not needed.
+#
+# Apply: kubectl apply -f blockchain/network/00-pvc.yaml
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: orderer-data-pvc
+  namespace: blockchain
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    component: orderer
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: peer-data-pvc
+  namespace: blockchain
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    component: peer
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi

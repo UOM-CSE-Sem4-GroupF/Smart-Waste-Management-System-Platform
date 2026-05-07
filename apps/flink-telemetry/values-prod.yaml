@@ -1,0 +1,111 @@
+# Production overrides for flink-telemetry (all 5 Flink pipelines, no HTTP).
+# Single-replica by design — Flink manages its own internal parallelism.
+# HPA is disabled because this is a stateful stream processor; scaling is
+# controlled via Flink parallelism settings, not pod count.
+base-service:
+  imagePullSecrets:
+    - name: ghcr-pull-secret
+
+  image:
+    repository: ghcr.io/uom-cse-sem4-groupf/flink-processor
+    tag: latest
+    pullPolicy: Always
+
+  replicaCount: 1
+
+  service:
+    port: 8080
+
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 1Gi
+    limits:
+      cpu: 4000m
+      memory: 4Gi
+
+  hpa:
+    enabled: false
+
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+  livenessProbe:
+    enabled: false
+  readinessProbe:
+    enabled: false
+
+  podSecurityContext:
+    runAsNonRoot: false
+    runAsUser: 0
+    fsGroup: 0
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    runAsNonRoot: false
+    runAsUser: 0
+    capabilities:
+      drop:
+        - ALL
+
+  # Run all 5 pipelines in one pod — same as dev, no dev-mode flags present.
+  command: ["/bin/bash", "-c"]
+  args:
+    - |
+      python job.py --mode pyflink-kafka &
+      python job_zone.py --mode pyflink-kafka &
+      python job_deviation.py --mode pyflink-kafka &
+      python job_vehicle.py --mode pyflink-kafka &
+      python job_sensor_offline.py --mode pyflink-kafka &
+      wait -n
+
+  env:
+    APP_ENV: "production"
+    LOG_LEVEL: "INFO"
+    # Kafka
+    KAFKA_BOOTSTRAP_SERVERS: "kafka.messaging.svc.cluster.local:9092"
+    KAFKA_SECURITY_PROTOCOL: "SASL_PLAINTEXT"
+    KAFKA_SASL_MECHANISM: "SCRAM-SHA-256"
+    # Telemetry pipeline (job.py)
+    KAFKA_INPUT_TOPIC: "waste.bin.telemetry"
+    KAFKA_OUTPUT_TOPIC: "waste.bin.processed"
+    # Zone pipeline (job_zone.py)
+    KAFKA_ZONE_INPUT_TOPIC: "waste.bin.processed"
+    KAFKA_ZONE_OUTPUT_TOPIC: "waste.zone.statistics"
+    ZONE_WINDOW_MINUTES: "10"
+    # Deviation pipeline (job_deviation.py)
+    KAFKA_VEHICLE_LOCATION_TOPIC: "waste.vehicle.location"
+    KAFKA_VEHICLE_DEVIATION_TOPIC: "waste.vehicle.deviation"
+    # Sensor offline pipeline (job_sensor_offline.py)
+    OFFLINE_THRESHOLD_MINUTES: "30"
+    TICK_INTERVAL_SECONDS: "60"
+    # PostgreSQL
+    POSTGRES_HOST: "postgres-waste-postgresql.waste-prod.svc.cluster.local"
+    POSTGRES_PORT: "5432"
+    POSTGRES_DB: "waste_management"
+    POSTGRES_USER: "waste_admin"
+    POSTGRES_SCHEMA: "f2"
+    # InfluxDB
+    INFLUX_URL: "http://influxdb.waste-prod.svc.cluster.local:8086"
+    INFLUX_ORG: "waste-org"
+    INFLUX_ENABLED: "true"
+    INFLUX_RAW_BUCKET: "bin_readings_raw"
+    INFLUX_PROCESSED_BUCKET: "bin_readings_processed"
+    INFLUX_ZONE_BUCKET: "zone_statistics"
+    INFLUX_VEHICLE_BUCKET: "vehicle_positions"
+
+  externalSecret:
+    enabled: true
+    vaultPath: swms/kafka
+    secretStoreName: vault-backend
+    secretStoreKind: ClusterSecretStore
+    data:
+      - secretKey: KAFKA_USERNAME
+        remoteRef: { key: swms/kafka, property: sasl_username }
+      - secretKey: KAFKA_PASSWORD
+        remoteRef: { key: swms/kafka, property: sasl_password }
+      - secretKey: POSTGRES_PASSWORD
+        remoteRef: { key: swms/postgres-waste, property: password }
+      - secretKey: INFLUX_TOKEN
+        remoteRef: { key: swms/influxdb, property: token }

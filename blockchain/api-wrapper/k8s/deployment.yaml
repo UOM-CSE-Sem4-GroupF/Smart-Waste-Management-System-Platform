@@ -1,0 +1,124 @@
+# Group F SWMS — Blockchain API Wrapper Deployment
+# Owner: F4 Platform Team
+#
+# Runs the Go REST server (Service 18) in the blockchain namespace.
+# Mounts Fabric TLS and admin identity from K8s Secrets created by 01-setup-job.yaml.
+#
+# Kong routes:
+#   POST /records             → internal (F3 orchestrator calls directly via K8s DNS)
+#   GET  /records/:job_id    → public (Kong JWT-protected at /api/v1/records/:id)
+#   GET  /records/zone/:id   → public (Kong JWT-protected)
+#
+# Apply: kubectl apply -f blockchain/api-wrapper/k8s/deployment.yaml
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blockchain-api-wrapper
+  namespace: blockchain
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    app: blockchain-api-wrapper
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: blockchain-api-wrapper
+  template:
+    metadata:
+      labels:
+        app: blockchain-api-wrapper
+    spec:
+      initContainers:
+        # Extract admin MSP key + cert from tar.gz into flat files the app can read
+        - name: setup-identity
+          image: busybox:1.36
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              mkdir -p /fabric-identity
+              tar xzf /etc/fabric/admin-msp/msp.tar.gz -C /tmp/msp
+              # Copy cert
+              CERTFILE=$(ls /tmp/msp/signcerts/)
+              cp "/tmp/msp/signcerts/$CERTFILE" /fabric-identity/cert.pem
+              # Copy key
+              KEYFILE=$(ls /tmp/msp/keystore/)
+              cp "/tmp/msp/keystore/$KEYFILE" /fabric-identity/key.pem
+              echo "Identity ready."
+          volumeMounts:
+            - name: admin-msp-secret
+              mountPath: /etc/fabric/admin-msp
+            - name: identity-dir
+              mountPath: /fabric-identity
+            - name: tmp-msp
+              mountPath: /tmp/msp
+
+      containers:
+        - name: api-wrapper
+          image: blockchain-api-wrapper:1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: PORT
+              value: "8080"
+            - name: PEER_ENDPOINT
+              value: "peer0.blockchain.svc.cluster.local:7051"
+            - name: PEER_TLS_CERT_PATH
+              value: "/etc/fabric/tls/peer-tlsca.pem"
+            - name: PEER_HOSTNAME_OVERRIDE
+              value: "peer0.wasteMgmt.swms.local"
+            - name: ADMIN_CERT_PATH
+              value: "/etc/fabric/identity/cert.pem"
+            - name: ADMIN_KEY_PATH
+              value: "/etc/fabric/identity/key.pem"
+            - name: MSP_ID
+              value: "WasteMgmtMSP"
+            - name: CHANNEL_NAME
+              value: "waste-collection-channel"
+            - name: CHAINCODE_NAME
+              value: "collection-record"
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 50m
+            limits:
+              memory: 128Mi
+              cpu: 200m
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          volumeMounts:
+            - name: root-ca-secret
+              mountPath: /etc/fabric/tls
+              readOnly: true
+            - name: identity-dir
+              mountPath: /etc/fabric/identity
+              readOnly: true
+
+      volumes:
+        - name: admin-msp-secret
+          secret:
+            secretName: fabric-admin-msp
+        - name: root-ca-secret
+          secret:
+            secretName: fabric-root-ca
+        - name: identity-dir
+          emptyDir: {}
+        - name: tmp-msp
+          emptyDir: {}

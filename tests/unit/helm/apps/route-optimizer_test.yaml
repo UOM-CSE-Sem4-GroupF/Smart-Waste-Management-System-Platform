@@ -1,0 +1,33 @@
+suite: route-optimizer chart values
+templates:
+  - charts/base-service/templates/deployment.yaml
+  - charts/base-service/templates/external-secret.yaml
+values:
+  - values-dev.yaml
+tests:
+  - it: should use route-optimizer image repository
+    template: charts/base-service/templates/deployment.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: "ghcr.io/uom-cse-sem4-groupf/route-optimizer:.*"
+
+  - it: should expose port 8083
+    template: charts/base-service/templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 8083
+
+  - it: should render ExternalSecret for DB_PASSWORD
+    template: charts/base-service/templates/external-secret.yaml
+    asserts:
+      - isKind:
+          of: ExternalSecret
+      - contains:
+          path: spec.data
+          content:
+            secretKey: DB_PASSWORD
+            remoteRef:
+              key: swms/postgres-waste
+              property: password

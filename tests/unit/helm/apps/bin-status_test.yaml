@@ -1,0 +1,29 @@
+suite: bin-status chart values
+templates:
+  - charts/base-service/templates/deployment.yaml
+  - charts/base-service/templates/external-secret.yaml
+values:
+  - values-dev.yaml
+tests:
+  - it: should use bin-status image repository
+    template: charts/base-service/templates/deployment.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: "ghcr.io/uom-cse-sem4-groupf/bin-status:.*"
+
+  - it: should expose port 3002
+    template: charts/base-service/templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 3002
+
+  - it: should render ExternalSecret for Kafka credentials
+    template: charts/base-service/templates/external-secret.yaml
+    asserts:
+      - isKind:
+          of: ExternalSecret
+      - equal:
+          path: spec.secretStoreRef.name
+          value: vault-backend

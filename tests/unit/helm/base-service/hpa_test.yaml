@@ -1,0 +1,53 @@
+suite: base-service HorizontalPodAutoscaler
+templates:
+  - templates/hpa.yaml
+tests:
+  - it: should not render HPA when disabled (default)
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should render HPA when enabled
+    set:
+      hpa.enabled: true
+    asserts:
+      - isKind:
+          of: HorizontalPodAutoscaler
+
+  - it: should use autoscaling/v2 API
+    set:
+      hpa.enabled: true
+    asserts:
+      - equal:
+          path: apiVersion
+          value: autoscaling/v2
+
+  - it: should respect custom minReplicas and maxReplicas
+    set:
+      hpa.enabled: true
+      hpa.minReplicas: 2
+      hpa.maxReplicas: 10
+    asserts:
+      - equal:
+          path: spec.minReplicas
+          value: 2
+      - equal:
+          path: spec.maxReplicas
+          value: 10
+
+  - it: should target CPU utilization at configured percentage
+    set:
+      hpa.enabled: true
+      hpa.targetCPUUtilizationPercentage: 70
+    asserts:
+      - equal:
+          path: spec.metrics[0].resource.target.averageUtilization
+          value: 70
+
+  - it: should target the correct Deployment
+    set:
+      hpa.enabled: true
+    asserts:
+      - equal:
+          path: spec.scaleTargetRef.kind
+          value: Deployment

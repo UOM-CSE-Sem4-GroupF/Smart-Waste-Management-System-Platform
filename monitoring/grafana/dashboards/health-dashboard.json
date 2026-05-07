@@ -29,8 +29,82 @@
         "expr": "container_memory_usage_bytes / container_spec_memory_limit_bytes * 100",
         "legendFormat": "{{ pod }}"
       }]
+    },
+    {
+      "title": "Blockchain — Peer Health",
+      "description": "Hyperledger Fabric peer and orderer liveness via their /healthz operations endpoint.",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 12 },
+      "targets": [{
+        "expr": "up{job=~\"fabric-peer|fabric-orderer\"}",
+        "legendFormat": "{{ job }}"
+      }],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "thresholds": { "steps": [{ "color": "red", "value": 0 }, { "color": "green", "value": 1 }] }
+      }
+    },
+    {
+      "title": "Blockchain — Transaction Throughput",
+      "description": "Transactions submitted to waste-collection-channel per minute.",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 10, "x": 4, "y": 12 },
+      "targets": [{
+        "expr": "rate(hyperledger_fabric_transaction_count{channel=\"waste-collection-channel\"}[5m]) * 60",
+        "legendFormat": "tx/min"
+      }],
+      "yaxes": [{ "format": "short", "label": "Transactions / min" }]
+    },
+    {
+      "title": "Blockchain — Block Commit Time (p95)",
+      "description": "95th percentile block commit duration in seconds. Should stay below 2s.",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 10, "x": 14, "y": 12 },
+      "targets": [{
+        "expr": "histogram_quantile(0.95, rate(hyperledger_fabric_block_processing_time_seconds_bucket[5m]))",
+        "legendFormat": "p95 block time"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": { "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 2 }] }
+        }
+      }
+    },
+    {
+      "title": "Blockchain — API Wrapper Request Rate",
+      "description": "Requests/sec to the blockchain REST API wrapper (POST /records + GET /records/:id).",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "targets": [
+        {
+          "expr": "rate(gin_requests_total{service=\"blockchain-api-wrapper\",method=\"POST\"}[5m])",
+          "legendFormat": "POST /records (audit write)"
+        },
+        {
+          "expr": "rate(gin_requests_total{service=\"blockchain-api-wrapper\",method=\"GET\"}[5m])",
+          "legendFormat": "GET /records (audit read)"
+        }
+      ]
+    },
+    {
+      "title": "Blockchain — API Error Rate",
+      "description": "5xx responses from blockchain-api-wrapper. Any sustained errors indicate Fabric peer connectivity issues.",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 20 },
+      "targets": [{
+        "expr": "rate(gin_requests_total{service=\"blockchain-api-wrapper\",status=~\"5..\"}[5m])",
+        "legendFormat": "5xx rate"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "thresholds": { "steps": [{ "color": "green", "value": 0 }, { "color": "red", "value": 0.01 }] }
+        }
+      }
     }
   ],
   "schemaVersion": 30,
-  "version": 1
+  "version": 2
 }

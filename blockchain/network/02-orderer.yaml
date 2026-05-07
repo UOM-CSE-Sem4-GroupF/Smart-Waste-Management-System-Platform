@@ -1,0 +1,180 @@
+# Group F SWMS — Hyperledger Fabric Orderer
+# Owner: F4 Platform Team
+#
+# Single Raft orderer for dev. Reads TLS + MSP material from K8s Secrets
+# created by 01-setup-job.yaml. The init container untars the MSP archive
+# and arranges the directory structure that the orderer binary expects.
+#
+# Ports:
+#   7050 — gRPC (peer/client channel traffic + Raft replication)
+#   7053 — Admin gRPC (osnadmin channel join — used by 04-channel-setup-job)
+#   8443 — Operations HTTP (Prometheus /metrics, /healthz)
+#
+# Apply AFTER fabric-setup Job completes:
+#   kubectl apply -f blockchain/network/02-orderer.yaml
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: orderer
+  namespace: blockchain
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    app: fabric-orderer
+spec:
+  serviceName: orderer
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fabric-orderer
+  template:
+    metadata:
+      labels:
+        app: fabric-orderer
+    spec:
+      initContainers:
+        # Untar the orderer MSP archive into the directory structure the orderer expects
+        - name: setup-msp
+          image: busybox:1.36
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              mkdir -p /var/hyperledger/orderer/msp
+              tar xzf /etc/fabric/orderer-msp/msp.tar.gz -C /var/hyperledger/orderer/msp
+              echo "Orderer MSP ready."
+              ls /var/hyperledger/orderer/msp/
+          volumeMounts:
+            - name: orderer-msp-secret
+              mountPath: /etc/fabric/orderer-msp
+            - name: orderer-data
+              mountPath: /var/hyperledger/orderer
+
+      containers:
+        - name: orderer
+          image: hyperledger/fabric-orderer:2.5
+          ports:
+            - containerPort: 7050
+              name: grpc
+            - containerPort: 7053
+              name: admin
+            - containerPort: 8443
+              name: operations
+          env:
+            - name: FABRIC_LOGGING_SPEC
+              value: "INFO"
+            - name: ORDERER_GENERAL_LISTENADDRESS
+              value: "0.0.0.0"
+            - name: ORDERER_GENERAL_LISTENPORT
+              value: "7050"
+            - name: ORDERER_GENERAL_LOCALMSPID
+              value: "OrdererMSP"
+            - name: ORDERER_GENERAL_LOCALMSPDIR
+              value: "/var/hyperledger/orderer/msp"
+            # TLS — mTLS enforced between peers and orderer
+            - name: ORDERER_GENERAL_TLS_ENABLED
+              value: "true"
+            - name: ORDERER_GENERAL_TLS_PRIVATEKEY
+              value: "/var/hyperledger/orderer/tls/tls.key"
+            - name: ORDERER_GENERAL_TLS_CERTIFICATE
+              value: "/var/hyperledger/orderer/tls/tls.crt"
+            - name: ORDERER_GENERAL_TLS_ROOTCAS
+              value: "[/var/hyperledger/orderer/tls/ca.crt]"
+            # Raft cluster TLS (reuses the same TLS cert in single-node dev)
+            - name: ORDERER_GENERAL_CLUSTER_CLIENTCERTIFICATE
+              value: "/var/hyperledger/orderer/tls/tls.crt"
+            - name: ORDERER_GENERAL_CLUSTER_CLIENTPRIVATEKEY
+              value: "/var/hyperledger/orderer/tls/tls.key"
+            - name: ORDERER_GENERAL_CLUSTER_ROOTCAS
+              value: "[/var/hyperledger/orderer/tls/ca.crt]"
+            # Channel participation API (Fabric 2.5 — no system channel genesis block needed at boot)
+            - name: ORDERER_CHANNELPARTICIPATION_ENABLED
+              value: "true"
+            # Admin gRPC endpoint for osnadmin channel join
+            - name: ORDERER_ADMIN_TLS_ENABLED
+              value: "true"
+            - name: ORDERER_ADMIN_TLS_CERTIFICATE
+              value: "/var/hyperledger/orderer/tls/tls.crt"
+            - name: ORDERER_ADMIN_TLS_PRIVATEKEY
+              value: "/var/hyperledger/orderer/tls/tls.key"
+            - name: ORDERER_ADMIN_TLS_ROOTCAS
+              value: "[/var/hyperledger/orderer/tls/ca.crt]"
+            - name: ORDERER_ADMIN_TLS_CLIENTROOTCAS
+              value: "[/var/hyperledger/orderer/tls/ca.crt]"
+            - name: ORDERER_ADMIN_LISTENADDRESS
+              value: "0.0.0.0:7053"
+            # Ledger
+            - name: ORDERER_FILELEDGER_LOCATION
+              value: "/var/hyperledger/orderer/ledger"
+            # Operations (health + Prometheus metrics)
+            - name: ORDERER_OPERATIONS_LISTENADDRESS
+              value: "0.0.0.0:8443"
+            - name: ORDERER_METRICS_PROVIDER
+              value: "prometheus"
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 500m
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8443
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8443
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+          volumeMounts:
+            - name: orderer-tls-secret
+              mountPath: /var/hyperledger/orderer/tls
+              readOnly: true
+            - name: orderer-data
+              mountPath: /var/hyperledger/orderer/ledger
+              subPath: ledger
+
+      volumes:
+        - name: orderer-tls-secret
+          secret:
+            secretName: fabric-orderer-tls
+        - name: orderer-msp-secret
+          secret:
+            secretName: fabric-orderer-msp
+        - name: orderer-data
+          persistentVolumeClaim:
+            claimName: orderer-data-pvc
+
+---
+# Headless service for Raft consensus + peer/client connections
+apiVersion: v1
+kind: Service
+metadata:
+  name: orderer
+  namespace: blockchain
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    app: fabric-orderer
+spec:
+  selector:
+    app: fabric-orderer
+  clusterIP: None
+  ports:
+    - name: grpc
+      port: 7050
+      targetPort: 7050
+    - name: admin
+      port: 7053
+      targetPort: 7053
+    - name: operations
+      port: 8443
+      targetPort: 8443

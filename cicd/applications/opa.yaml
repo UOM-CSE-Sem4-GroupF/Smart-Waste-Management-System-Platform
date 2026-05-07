@@ -1,0 +1,62 @@
+# Group F — Smart Waste Management System
+# Argo CD Application: OPA Gatekeeper
+# Owner: F4 Platform Team
+#
+# Deploys OPA Gatekeeper as a Kubernetes ValidatingAdmissionWebhook.
+# Once running, the policies in security/opa/ are loaded via ConfigMap.
+#
+# NOTE: auto-sync is disabled intentionally — enabling Gatekeeper's admission
+# webhook immediately enforces policies on ALL new pods cluster-wide.
+# Enable auto-sync only after verifying policies don't block existing workloads:
+#   kubectl apply -f security/opa/configmap.yaml -n opa-system
+#   kubectl label ns waste-dev admission.gatekeeper.sh/ignore=no-
+#
+# Chart: gatekeeper/gatekeeper
+# Namespace: opa-system
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: opa-gatekeeper
+  namespace: cicd
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    component: security
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+
+  source:
+    repoURL: https://open-policy-agent.github.io/gatekeeper/charts
+    chart: gatekeeper
+    targetRevision: "3.18.0"
+    helm:
+      releaseName: gatekeeper
+      values: |
+        replicaCount: 1
+        auditInterval: 60
+        constraintViolationsLimit: 20
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        postInstall:
+          labelNamespace:
+            enabled: false
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: opa-system
+
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    # automated is intentionally absent — enable manually once policies are validated

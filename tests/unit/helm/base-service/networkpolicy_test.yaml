@@ -1,0 +1,51 @@
+suite: base-service NetworkPolicy
+templates:
+  - templates/networkpolicy.yaml
+tests:
+  - it: should not render NetworkPolicy when disabled (default)
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should render NetworkPolicy when enabled
+    set:
+      networkPolicy.enabled: true
+    asserts:
+      - isKind:
+          of: NetworkPolicy
+
+  - it: should allow ingress from gateway namespace by default
+    set:
+      networkPolicy.enabled: true
+    asserts:
+      - contains:
+          path: spec.ingress[0].from[0].namespaceSelector.matchLabels
+          content:
+            swms-network-zone: gateway
+
+  - it: should allow ingress from monitoring namespace by default
+    set:
+      networkPolicy.enabled: true
+    asserts:
+      - contains:
+          path: spec.ingress[1].from[0].namespaceSelector.matchLabels
+          content:
+            swms-network-zone: monitoring
+
+  - it: should include both Ingress and Egress policy types
+    set:
+      networkPolicy.enabled: true
+    asserts:
+      - contains:
+          path: spec.policyTypes
+          content: Ingress
+      - contains:
+          path: spec.policyTypes
+          content: Egress
+
+  - it: should allow egress to messaging namespace for Kafka
+    set:
+      networkPolicy.enabled: true
+    asserts:
+      - isNotEmpty:
+          path: spec.egress

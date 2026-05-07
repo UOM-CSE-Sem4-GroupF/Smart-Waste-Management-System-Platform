@@ -1,0 +1,70 @@
+# Production overrides for orchestrator (Node.js, port 3001).
+# Critical service — 3 replicas minimum.
+base-service:
+  imagePullSecrets:
+    - name: ghcr-pull-secret
+
+  image:
+    repository: ghcr.io/uom-cse-sem4-groupf/orchestrator
+    tag: latest
+    pullPolicy: Always
+
+  replicaCount: 3
+
+  service:
+    port: 3001
+
+  resources:
+    requests:
+      cpu: 150m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1024Mi
+
+  hpa:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+
+  livenessProbe:
+    enabled: true
+    httpGet:
+      port: 3001
+      path: /health
+
+  readinessProbe:
+    enabled: true
+    httpGet:
+      port: 3001
+      path: /ready
+    initialDelaySeconds: 15
+
+  # Dev-mode command override removed.
+  # DATABASE_URL is injected at runtime via the init container / Vault agent
+  # using the POSTGRES_PASSWORD ExternalSecret below.
+  env:
+    PORT: "3001"
+    NODE_ENV: "production"
+    KAFKA_BROKER: "kafka.messaging.svc.cluster.local:9092"
+    BIN_STATUS_URL: "http://bin-status-base-service.waste-prod.svc.cluster.local:3002"
+    SCHEDULER_URL: "http://scheduler-base-service.waste-prod.svc.cluster.local:3003"
+    NOTIFICATION_URL: "http://notification-base-service.waste-prod.svc.cluster.local:3004"
+
+  externalSecret:
+    enabled: true
+    vaultPath: swms/kafka
+    secretStoreName: vault-backend
+    secretStoreKind: ClusterSecretStore
+    data:
+      - secretKey: KAFKA_USER
+        remoteRef: { key: swms/kafka, property: sasl_username }
+      - secretKey: KAFKA_PASS
+        remoteRef: { key: swms/kafka, property: sasl_password }
+      - secretKey: POSTGRES_PASSWORD
+        remoteRef: { key: swms/postgres-waste, property: password }

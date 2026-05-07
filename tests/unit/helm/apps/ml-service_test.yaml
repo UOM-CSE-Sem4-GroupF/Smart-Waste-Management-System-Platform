@@ -1,0 +1,33 @@
+suite: ml-service chart values
+templates:
+  - charts/base-service/templates/deployment.yaml
+  - charts/base-service/templates/external-secret.yaml
+values:
+  - values-dev.yaml
+tests:
+  - it: should use ml-service image repository
+    template: charts/base-service/templates/deployment.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: "ghcr.io/uom-cse-sem4-groupf/ml-service:.*"
+
+  - it: should expose port 8000
+    template: charts/base-service/templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 8000
+
+  - it: should render ExternalSecret for PostgreSQL credentials
+    template: charts/base-service/templates/external-secret.yaml
+    asserts:
+      - isKind:
+          of: ExternalSecret
+      - contains:
+          path: spec.data
+          content:
+            secretKey: POSTGRES_PASSWORD
+            remoteRef:
+              key: swms/postgres-waste
+              property: password

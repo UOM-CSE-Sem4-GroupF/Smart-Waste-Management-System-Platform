@@ -1,0 +1,119 @@
+# Chaos Mesh — Network Chaos Experiments
+# Goal: Prove the system handles Kafka broker network failures and inter-service
+#       latency without data loss or cascading failures.
+#
+# Apply: kubectl apply -f tests/chaos/network-chaos.yaml -n waste-dev
+# Watch: kubectl get networkchaos -n waste-dev
+
+---
+# EXPERIMENT 1 — Kafka network partition (simulate broker going offline)
+# Cuts all TCP traffic from waste-dev pods to the Kafka broker for 60s.
+# Expected:
+#   - Flink processors pause, buffer in-flight state
+#   - Orchestrator and scheduler log Kafka connection errors but do not crash
+#   - After partition ends, all consumers reconnect and resume from last offset
+#   - No messages are lost (Kafka's durable log guarantees this)
+# Pass criteria: Kafka consumer group lag returns to 0 within 2 minutes of recovery.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: kafka-network-partition
+  namespace: waste-dev
+  labels:
+    app: chaos-testing
+    experiment: network-partition
+spec:
+  action: partition
+  mode: all
+  selector:
+    namespaces:
+      - waste-dev
+  direction: to
+  target:
+    mode: all
+    selector:
+      namespaces:
+        - messaging
+      labelSelectors:
+        app.kubernetes.io/name: kafka
+  duration: "60s"
+  scheduler:
+    cron: "@every 10m"
+
+---
+# EXPERIMENT 2 — High latency between orchestrator and scheduler (200ms ± 50ms)
+# Simulates a degraded network link between two tightly-coupled services.
+# Expected:
+#   - HTTP calls from orchestrator to scheduler succeed but take longer
+#   - No timeouts (scheduler has a 30s read timeout)
+#   - Kong routes for job management remain 200 OK (latency passes through)
+# Pass criteria: p99 latency on /api/v1/jobs < 500ms during chaos window.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: orchestrator-to-scheduler-latency
+  namespace: waste-dev
+  labels:
+    app: chaos-testing
+    experiment: network-delay
+spec:
+  action: delay
+  mode: all
+  selector:
+    namespaces:
+      - waste-dev
+    labelSelectors:
+      app.kubernetes.io/instance: orchestrator
+  delay:
+    latency: "200ms"
+    jitter: "50ms"
+    correlation: "25"
+  direction: to
+  target:
+    mode: all
+    selector:
+      namespaces:
+        - waste-dev
+      labelSelectors:
+        app.kubernetes.io/instance: scheduler
+  duration: "2m"
+  scheduler:
+    cron: "@every 15m"
+
+---
+# EXPERIMENT 3 — 10% packet loss between bin-status and core-api
+# Simulates a flaky network link on the data-analysis path.
+# Expected:
+#   - HTTP client retries handle occasional packet loss transparently
+#   - bin-status eventually returns correct fill-level data
+# Pass criteria: bin-status /api/v1/bins returns 200 for > 95% of requests.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: bin-status-to-core-api-loss
+  namespace: waste-dev
+  labels:
+    app: chaos-testing
+    experiment: packet-loss
+spec:
+  action: loss
+  mode: all
+  selector:
+    namespaces:
+      - waste-dev
+    labelSelectors:
+      app.kubernetes.io/instance: bin-status
+  loss:
+    loss: "10"
+    correlation: "25"
+  direction: to
+  target:
+    mode: all
+    selector:
+      namespaces:
+        - waste-dev
+      labelSelectors:
+        app.kubernetes.io/instance: core-api
+  duration: "3m"
+  scheduler:
+    cron: "@every 20m"

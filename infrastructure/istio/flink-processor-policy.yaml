@@ -1,11 +1,21 @@
 # Group F — Smart Waste Management System
-# AuthorizationPolicy for Flink Processor
+# Istio AuthorizationPolicies for flink-processor
 # Owner: F4 Platform Team
+#
+# With global-default-deny in mesh-security.yaml, every connection must be
+# explicitly allowed on the DESTINATION side. Rules below cover all inbound
+# paths that flink-processor participates in, both as caller and callee.
 
+# =============================================================================
+# Inbound to flink-processor
+# Allow Kafka (messaging namespace) to push data to flink consumers,
+# and other waste-dev services to call flink's HTTP management port.
+# =============================================================================
+---
 apiVersion: security.istio.io/v1beta1
 kind: AuthorizationPolicy
 metadata:
-  name: flink-processor-allow
+  name: allow-inbound-to-flink-processor
   namespace: waste-dev
 spec:
   selector:
@@ -13,25 +23,48 @@ spec:
       app.kubernetes.io/name: flink-processor
   action: ALLOW
   rules:
-    - to:
-        - operation:
-            methods: ["POST", "GET"] # Allow telemetry pushes and DB queries
-      from:
+    - from:
         - source:
             namespaces: ["messaging", "waste-dev"]
+
+# =============================================================================
+# Flink-processor → InfluxDB (time-series writes)
+# Allow the flink-processor service account to write to InfluxDB.
+# =============================================================================
 ---
-# Allow Flink to talk to external services (if needed) or other internal ones
 apiVersion: security.istio.io/v1beta1
 kind: AuthorizationPolicy
 metadata:
-  name: allow-internal-egress
+  name: allow-flink-to-influxdb
   namespace: waste-dev
 spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: influxdb2
   action: ALLOW
   rules:
-    - to:
-        - operation:
-            hosts: 
-              - "kafka.messaging.svc.cluster.local"
-              - "postgres-waste-postgresql.waste-dev.svc.cluster.local"
-              - "influxdb.waste-dev.svc.cluster.local"
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/waste-dev/sa/flink-processor-base-service"
+
+# =============================================================================
+# Flink-processor → PostgreSQL (relational writes)
+# Allow the flink-processor service account to reach postgres-waste.
+# =============================================================================
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-flink-to-postgres
+  namespace: waste-dev
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres-waste-postgresql
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/waste-dev/sa/flink-processor-base-service"

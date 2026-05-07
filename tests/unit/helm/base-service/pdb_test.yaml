@@ -1,0 +1,40 @@
+suite: base-service PodDisruptionBudget
+templates:
+  - templates/pdb.yaml
+tests:
+  - it: should not render PDB when disabled (default)
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should render PDB when enabled
+    set:
+      podDisruptionBudget.enabled: true
+    asserts:
+      - isKind:
+          of: PodDisruptionBudget
+
+  - it: should use policy/v1 API
+    set:
+      podDisruptionBudget.enabled: true
+    asserts:
+      - equal:
+          path: apiVersion
+          value: policy/v1
+
+  - it: should set minAvailable from values
+    set:
+      podDisruptionBudget.enabled: true
+      podDisruptionBudget.minAvailable: 2
+    asserts:
+      - equal:
+          path: spec.minAvailable
+          value: 2
+
+  - it: should default minAvailable to 1
+    set:
+      podDisruptionBudget.enabled: true
+    asserts:
+      - equal:
+          path: spec.minAvailable
+          value: 1

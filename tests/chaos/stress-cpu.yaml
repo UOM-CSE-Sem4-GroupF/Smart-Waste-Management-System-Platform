@@ -1,0 +1,33 @@
+# Chaos Mesh — CPU StressChaos: bin-status
+# Goal: Verify bin-status remains available and responsive under sustained CPU
+# contention; Kubernetes HPA should trigger a scale-out before the duration elapses.
+#
+# Apply: kubectl apply -f tests/chaos/stress-cpu.yaml -n waste-dev
+# Watch: kubectl get stresschaos -n waste-dev
+# Dashboard: http://localhost:2333 (kubectl port-forward svc/chaos-dashboard 2333:2333 -n chaos-mesh)
+#
+# Pass criteria:
+#   - HPA scales bin-status replicas within 90s of stress onset
+#   - /health endpoint continues to return 200 throughout
+#   - P99 latency on bin-status does not exceed 2s
+
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: bin-status-cpu-stress
+  namespace: waste-dev
+  labels:
+    app: chaos-testing
+    experiment: cpu-stress
+spec:
+  mode: one
+  selector:
+    namespaces:
+      - waste-dev
+    labelSelectors:
+      app.kubernetes.io/name: bin-status
+  stressors:
+    cpu:
+      workers: 2
+      load: 80
+  duration: "2m"

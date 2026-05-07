@@ -1,0 +1,28 @@
+# Group F SWMS — Blockchain API Wrapper Service
+# Owner: F4 Platform Team
+#
+# ClusterIP service — Kong routes to this from outside the blockchain namespace.
+# F3 orchestrator calls POST /records directly via K8s DNS:
+#   http://blockchain-api-wrapper.blockchain.svc.cluster.local:8080/records
+#
+# Kong public route (defined in gateway/kong/kong-config.yaml):
+#   GET /api/v1/records/:id → this service /records/:id
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: blockchain-api-wrapper
+  namespace: blockchain
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    app: blockchain-api-wrapper
+spec:
+  selector:
+    app: blockchain-api-wrapper
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

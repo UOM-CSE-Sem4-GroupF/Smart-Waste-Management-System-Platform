@@ -52,6 +52,11 @@ data:
               - PUT
               - PATCH
             plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -78,6 +83,11 @@ data:
             methods:
               - GET
             plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -93,6 +103,41 @@ data:
                 config:
                   minute: 60
                   policy: local
+
+          - name: clusters-api
+            paths:
+              - /api/v1/clusters
+            strip_path: false
+            methods:
+              - GET
+            plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+                  key_claim_name: kid
+              - name: cors
+                config:
+                  origins:
+                    - "*"
+                  methods:
+                    - GET
+                    - OPTIONS
+                  headers:
+                    - Authorization
+                    - Content-Type
+                  max_age: 3600
+              - name: rate-limiting
+                config:
+                  minute: 60
+                  policy: local
+
+          - name: bin-status-health
+            paths:
+              - /health/bin-status
+            strip_path: true
+            methods:
+              - GET
 
       # ---------------------------------------------------------
       # F3 — Collection Workflow Orchestrator
@@ -115,6 +160,11 @@ data:
               - PATCH
               - DELETE
             plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -153,6 +203,11 @@ data:
               - GET
               - POST
             plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -180,6 +235,11 @@ data:
               - PUT
               - PATCH
             plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -209,6 +269,11 @@ data:
               - PUT
               - PATCH
             plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -249,6 +314,11 @@ data:
               - PATCH
               - DELETE
             plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -287,6 +357,11 @@ data:
               - GET
               - POST
             plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -299,6 +374,50 @@ data:
                     - Authorization
                     - Content-Type
                   max_age: 3600
+              - name: rate-limiting
+                config:
+                  minute: 30
+                  policy: local
+
+      # ---------------------------------------------------------
+      # F4 — Blockchain API Wrapper
+      # Immutable audit trail — query collection records by job ID or zone
+      # POST /records is internal-only (F3 → blockchain namespace via K8s DNS)
+      # GET  /records/* is public (Kong JWT-protected)
+      # ---------------------------------------------------------
+      - name: blockchain-api-wrapper
+        url: http://blockchain-api-wrapper.blockchain.svc.cluster.local:8080
+        connect_timeout: 5000
+        read_timeout: 15000
+        write_timeout: 10000
+        routes:
+          - name: blockchain-records-query
+            paths:
+              - /api/v1/records
+            strip_path: false
+            methods:
+              - GET
+            plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+              - name: rate-limiting
+                config:
+                  minute: 60
+                  policy: local
+
+          - name: blockchain-records-zone
+            paths:
+              - /api/v1/records/zone
+            strip_path: false
+            methods:
+              - GET
+            plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
               - name: rate-limiting
                 config:
                   minute: 30
@@ -322,6 +441,11 @@ data:
               - GET
               - POST
             plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -354,8 +478,19 @@ data:
             paths:
               - /socket.io
             strip_path: false
-            # Auth is handled inside the Socket.IO handshake
+            # JWT is enforced at the Kong level (query param ?token=<jwt> or
+            # Authorization: Bearer header). Socket.IO also validates internally
+            # for defence-in-depth. Clients must pass the Keycloak access token
+            # as ?token=<jwt> in the Socket.IO connection URL because the browser
+            # WebSocket API cannot set custom headers on the upgrade request.
             plugins:
+              - name: jwt
+                config:
+                  key_claim_name: iss
+                  claims_to_verify:
+                    - exp
+                  uri_param_names:
+                    - token
               - name: cors
                 config:
                   origins:
@@ -372,6 +507,24 @@ data:
                 config:
                   minute: 60
                   policy: local
+
+      # ---------------------------------------------------------
+      # SECURITY: Block all /internal/* routes
+      # Internal service-to-service calls use K8s DNS directly.
+      # Any request reaching Kong for /internal/* is rejected.
+      # ---------------------------------------------------------
+      - name: internal-block
+        url: http://127.0.0.1:1
+        routes:
+          - name: block-internal
+            paths:
+              - /internal
+            strip_path: false
+            plugins:
+              - name: request-termination
+                config:
+                  status_code: 403
+                  message: "Internal routes are not accessible via the API gateway"
 
     # =========================================================
     # GLOBAL PLUGINS

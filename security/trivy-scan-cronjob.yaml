@@ -1,0 +1,25 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: trivy-scan-core-api
+  namespace: monitoring # Placing scans in the monitoring namespace
+spec:
+  schedule: "0 2 * * *" # Run daily at 2 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: trivy-scanner
+            image: aquasec/trivy:latest
+            args: [
+              "image",
+              "--exit-code", "1",
+              "--severity", "HIGH,CRITICAL",
+              "--format", "table",
+              # This image would be dynamically updated by the Argo CD Image Updater
+              # We'll use a placeholder for the latest known image tag.
+              # In a real pipeline, this could be queried from the values files.
+              "ghcr.io/uom-cse-sem4-groupf/core-api:latest"
+            ]
+          restartPolicy: OnFailure

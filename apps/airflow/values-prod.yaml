@@ -1,0 +1,47 @@
+# Production overrides for airflow (port 8080).
+base-service:
+  imagePullSecrets:
+    - name: ghcr-pull-secret
+
+  image:
+    repository: ghcr.io/uom-cse-sem4-groupf/airflow
+    tag: latest
+    pullPolicy: Always
+
+  replicaCount: 2
+
+  service:
+    port: 8080
+
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 70
+
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+  livenessProbe:
+    enabled: true
+    httpGet:
+      port: 8080
+      path: /
+
+  readinessProbe:
+    enabled: true
+    httpGet:
+      port: 8080
+      path: /
+
+  env:
+    APP_ENV: "production"

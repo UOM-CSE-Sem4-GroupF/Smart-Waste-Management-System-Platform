@@ -1,15 +1,15 @@
 {
   "title": "Intelligence Dashboard",
   "uid": "intel-dashboard",
-  "tags": ["business", "kpi"],
+  "tags": ["business", "kpi", "waste-intelligence"],
+  "timezone": "browser",
+  "refresh": "1m",
   "panels": [
     {
       "title": "Bin Collection Requests (24h)",
       "type": "stat",
       "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
-      "targets": [{
-        "expr": "increase(bin_collection_requests_total[24h])"
-      }]
+      "targets": [{ "expr": "increase(bin_collection_requests_total[24h])" }]
     },
     {
       "title": "Successful vs Failed Collections",
@@ -26,10 +26,70 @@
       "gridPos": { "h": 8, "w": 12, "x": 8, "y": 4 },
       "targets": [{
         "expr": "kafka_consumer_group_lag",
-        "legendFormat": "Queue lag - {{ topic }}"
+        "legendFormat": "Queue lag — {{ topic }}"
       }]
+    },
+    {
+      "title": "Zone Fill Level Heatmap",
+      "description": "Fill level % per zone — darker = fuller. Identify overflowing zones at a glance.",
+      "type": "heatmap",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 12 },
+      "targets": [{
+        "expr": "avg(bin_fill_level_percent) by (zone_id)",
+        "legendFormat": "{{ zone_id }}",
+        "format": "time_series"
+      }],
+      "options": {
+        "calculate": false,
+        "color": {
+          "scheme": "Oranges",
+          "steps": 64
+        },
+        "yAxis": { "unit": "percent" }
+      }
+    },
+    {
+      "title": "Prediction Accuracy — Predicted vs Actual Fill Time",
+      "description": "How accurately the ML model predicts when a bin will reach 80% capacity.",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "targets": [
+        {
+          "expr": "avg(ml_predicted_fill_time_minutes) by (zone_id)",
+          "legendFormat": "Predicted — {{ zone_id }}"
+        },
+        {
+          "expr": "avg(bin_actual_fill_time_minutes) by (zone_id)",
+          "legendFormat": "Actual — {{ zone_id }}"
+        }
+      ],
+      "yaxes": [{ "format": "m", "label": "Minutes to 80% fill" }]
+    },
+    {
+      "title": "Prediction Error (MAE minutes)",
+      "description": "Mean Absolute Error between predicted and actual fill times. Lower is better.",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 22 },
+      "targets": [{
+        "expr": "avg(abs(ml_predicted_fill_time_minutes - bin_actual_fill_time_minutes))",
+        "legendFormat": "MAE"
+      }],
+      "options": {
+        "thresholds": { "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 15 }, { "color": "red", "value": 30 }] }
+      }
+    },
+    {
+      "title": "ML Model Last Retrained",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 22 },
+      "targets": [{
+        "expr": "time() - waste_model_last_trained_timestamp",
+        "legendFormat": "Age"
+      }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "s" } }
     }
   ],
   "schemaVersion": 30,
-  "version": 1
+  "version": 2
 }
