@@ -1,0 +1,211 @@
+suite: Deployment template
+templates:
+  - templates/configmap.yaml
+  - templates/deployment.yaml
+
+tests:
+  - it: renders as a Deployment
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - isKind:
+          of: Deployment
+
+  - it: defaults to 1 replica
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+
+  - it: scales to requested replica count
+    set:
+      replicaCount: 3
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
+
+  - it: sets runAsNonRoot on the pod security context
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 1000
+
+  - it: sets runAsNonRoot on the container security context
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsNonRoot
+          value: true
+
+  - it: disallows privilege escalation
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+
+  - it: uses a read-only root filesystem
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+
+  - it: drops all Linux capabilities
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].securityContext.capabilities.drop
+          content: ALL
+
+  - it: sets CPU and memory limits and requests
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - isNotEmpty:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+      - isNotEmpty:
+          path: spec.template.spec.containers[0].resources.limits.memory
+      - isNotEmpty:
+          path: spec.template.spec.containers[0].resources.requests.cpu
+      - isNotEmpty:
+          path: spec.template.spec.containers[0].resources.requests.memory
+
+  - it: defines a liveness probe by default
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - isNotEmpty:
+          path: spec.template.spec.containers[0].livenessProbe
+
+  - it: defines a readiness probe by default
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - isNotEmpty:
+          path: spec.template.spec.containers[0].readinessProbe
+
+  - it: omits liveness probe when disabled
+    set:
+      livenessProbe.enabled: false
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].livenessProbe
+
+  - it: omits readiness probe when disabled
+    set:
+      readinessProbe.enabled: false
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].readinessProbe
+
+  - it: mounts a tmp volume for the read-only filesystem
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: tmp
+            mountPath: /tmp
+
+  - it: injects ConfigMap env vars via envFrom
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].envFrom
+          content:
+            configMapRef:
+              name: RELEASE-NAME-base-service-config
+
+  - it: adds secret envFrom when externalSecret is enabled
+    set:
+      externalSecret.enabled: true
+      externalSecret.vaultPath: swms/test
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].envFrom
+          content:
+            secretRef:
+              name: RELEASE-NAME-base-service-secrets
+
+  - it: omits secret envFrom when externalSecret is disabled
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].envFrom
+          content:
+            secretRef:
+              name: RELEASE-NAME-base-service-secrets
+
+  - it: uses consistent selector labels on deployment and pod template
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: spec.selector.matchLabels
+          value:
+            app.kubernetes.io/name: base-service
+            app.kubernetes.io/instance: RELEASE-NAME
+      - equal:
+          path: spec.template.metadata.labels
+          value:
+            app.kubernetes.io/name: base-service
+            app.kubernetes.io/instance: RELEASE-NAME
+
+  - it: sets the correct service account name
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: RELEASE-NAME-base-service
+
+  - it: renders the checksum annotation to force restarts on config change
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - isNotEmpty:
+          path: spec.template.metadata.annotations["checksum/config"]

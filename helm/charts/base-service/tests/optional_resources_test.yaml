@@ -1,0 +1,186 @@
+suite: Optional resources
+
+tests:
+  # ── NetworkPolicy ────────────────────────────────────────────────────────────
+
+  - it: does not render NetworkPolicy by default
+    template: templates/networkpolicy.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders NetworkPolicy when enabled
+    template: templates/networkpolicy.yaml
+    set:
+      networkPolicy.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: NetworkPolicy
+
+  - it: allows ingress from gateway namespace by default
+    template: templates/networkpolicy.yaml
+    set:
+      networkPolicy.enabled: true
+    asserts:
+      - equal:
+          path: spec.ingress[0].from[0].namespaceSelector.matchLabels.swms-network-zone
+          value: gateway
+
+  - it: allows ingress from monitoring namespace by default
+    template: templates/networkpolicy.yaml
+    set:
+      networkPolicy.enabled: true
+    asserts:
+      - equal:
+          path: spec.ingress[1].from[0].namespaceSelector.matchLabels.swms-network-zone
+          value: monitoring
+
+  - it: targets the correct pods via selector labels
+    template: templates/networkpolicy.yaml
+    set:
+      networkPolicy.enabled: true
+    asserts:
+      - equal:
+          path: spec.podSelector.matchLabels
+          value:
+            app.kubernetes.io/name: base-service
+            app.kubernetes.io/instance: RELEASE-NAME
+
+  - it: includes DNS egress rules
+    template: templates/networkpolicy.yaml
+    set:
+      networkPolicy.enabled: true
+    asserts:
+      - contains:
+          path: spec.egress
+          content:
+            ports:
+              - protocol: UDP
+                port: 53
+              - protocol: TCP
+                port: 53
+
+  # ── ExternalSecret ───────────────────────────────────────────────────────────
+
+  - it: does not render ExternalSecret by default
+    template: templates/external-secret.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders ExternalSecret when enabled
+    template: templates/external-secret.yaml
+    set:
+      externalSecret.enabled: true
+      externalSecret.vaultPath: swms/bin-status-service
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: ExternalSecret
+
+  - it: references the vault-backend ClusterSecretStore
+    template: templates/external-secret.yaml
+    set:
+      externalSecret.enabled: true
+      externalSecret.vaultPath: swms/test
+    asserts:
+      - equal:
+          path: spec.secretStoreRef.name
+          value: vault-backend
+      - equal:
+          path: spec.secretStoreRef.kind
+          value: ClusterSecretStore
+
+  - it: sets the refresh interval
+    template: templates/external-secret.yaml
+    set:
+      externalSecret.enabled: true
+      externalSecret.vaultPath: swms/test
+      externalSecret.refreshInterval: "30m"
+    asserts:
+      - equal:
+          path: spec.refreshInterval
+          value: "30m"
+
+  # ── ServiceMonitor ───────────────────────────────────────────────────────────
+
+  - it: does not render ServiceMonitor by default
+    template: templates/servicemonitor.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders ServiceMonitor when enabled
+    template: templates/servicemonitor.yaml
+    set:
+      serviceMonitor.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: ServiceMonitor
+
+  - it: sets the scrape path and interval
+    template: templates/servicemonitor.yaml
+    set:
+      serviceMonitor.enabled: true
+      serviceMonitor.path: /metrics
+      serviceMonitor.interval: 30s
+    asserts:
+      - equal:
+          path: spec.endpoints[0].path
+          value: /metrics
+      - equal:
+          path: spec.endpoints[0].interval
+          value: 30s
+
+  - it: includes the prometheus discovery label
+    template: templates/servicemonitor.yaml
+    set:
+      serviceMonitor.enabled: true
+    asserts:
+      - equal:
+          path: metadata.labels.release
+          value: monitoring
+
+  # ── PodDisruptionBudget ──────────────────────────────────────────────────────
+
+  - it: does not render PDB by default
+    template: templates/pdb.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders PDB when enabled
+    template: templates/pdb.yaml
+    set:
+      podDisruptionBudget.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: PodDisruptionBudget
+
+  - it: sets the minimum available pods
+    template: templates/pdb.yaml
+    set:
+      podDisruptionBudget.enabled: true
+      podDisruptionBudget.minAvailable: 2
+    asserts:
+      - equal:
+          path: spec.minAvailable
+          value: 2
+
+  - it: targets the correct pods via selector labels
+    template: templates/pdb.yaml
+    set:
+      podDisruptionBudget.enabled: true
+    asserts:
+      - equal:
+          path: spec.selector.matchLabels
+          value:
+            app.kubernetes.io/name: base-service
+            app.kubernetes.io/instance: RELEASE-NAME

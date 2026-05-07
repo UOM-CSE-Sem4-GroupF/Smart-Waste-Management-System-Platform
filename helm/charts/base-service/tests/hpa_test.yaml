@@ -1,0 +1,57 @@
+suite: HPA template
+templates:
+  - templates/hpa.yaml
+
+tests:
+  - it: does not render HPA by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders HPA when enabled
+    set:
+      hpa.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: HorizontalPodAutoscaler
+
+  - it: sets the correct min and max replicas
+    set:
+      hpa.enabled: true
+      hpa.minReplicas: 2
+      hpa.maxReplicas: 10
+    asserts:
+      - equal:
+          path: spec.minReplicas
+          value: 2
+      - equal:
+          path: spec.maxReplicas
+          value: 10
+
+  - it: targets the correct Deployment
+    set:
+      hpa.enabled: true
+    asserts:
+      - equal:
+          path: spec.scaleTargetRef.kind
+          value: Deployment
+      - equal:
+          path: spec.scaleTargetRef.apiVersion
+          value: apps/v1
+      - equal:
+          path: spec.scaleTargetRef.name
+          value: RELEASE-NAME-base-service
+
+  - it: sets the CPU utilization target
+    set:
+      hpa.enabled: true
+      hpa.targetCPUUtilizationPercentage: 80
+    asserts:
+      - equal:
+          path: spec.metrics[0].resource.name
+          value: cpu
+      - equal:
+          path: spec.metrics[0].resource.target.averageUtilization
+          value: 80
