@@ -524,7 +524,7 @@ data:
               - name: request-termination
                 config:
                   status_code: 403
-                  message: "Internal routes are not accessible via the API gateway"
+                  message: "Forbidden: Internal routes are not accessible via the API Gateway."
 
     # =========================================================
     # GLOBAL PLUGINS

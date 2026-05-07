@@ -7,13 +7,20 @@ base-service:
     tag: latest
   service:
     port: 8080
+  env:
+    AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "sqlite:////tmp/airflow.db"
+    AIRFLOW__CORE__EXECUTOR: "SequentialExecutor"
+    PORT: "8080"
+
   livenessProbe:
-    enabled: true
-    httpGet:
-      port: 8080
-      path: /
+    enabled: false
   readinessProbe:
     enabled: true
-    httpGet:
-      port: 8080
-      path: /
+    initialDelaySeconds: 60
+    periodSeconds: 10
+
+  containerSecurityContext:
+    readOnlyRootFilesystem: false
+    runAsUser: 50000 # Official airflow user UID is 50000
+
