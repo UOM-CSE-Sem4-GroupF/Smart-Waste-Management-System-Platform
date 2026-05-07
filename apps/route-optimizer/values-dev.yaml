@@ -8,9 +8,15 @@ base-service:
   service:
     port: 8083
   livenessProbe:
-    enabled: false
+    enabled: true
+    httpGet:
+      port: 8083
+      path: /health
   readinessProbe:
-    enabled: false
+    enabled: true
+    httpGet:
+      port: 8083
+      path: /ready
 
   env:
     APP_ENV: "production"

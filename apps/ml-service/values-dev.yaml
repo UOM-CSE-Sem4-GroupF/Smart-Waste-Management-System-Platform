@@ -16,7 +16,7 @@ base-service:
     enabled: true
     httpGet:
       port: 8000
-      path: /health
+      path: /ready
 
   env:
     APP_ENV: "production"
