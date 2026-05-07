@@ -1,20 +1,13 @@
 # Group F — Smart Waste Management System
-# Vault Secret Seeding Job
-# Owner: F4 Platform Team
+# Vault Bootstrap Job
 #
-# This Job runs after Vault is deployed. It:
-#   1. Enables the KV v2 secrets engine
-#   2. Seeds all platform secrets under secret/swms/
-#   3. Enables the Kubernetes auth method
-#   4. Creates policies and roles for each service
+# Handles first-boot (init + unseal + seed) and re-runs (unseal + re-seed).
+# Safe to run multiple times — all steps are idempotent.
 #
 # Usage: kubectl apply -f auth/vault/vault-policies.yaml -n auth
-#
-# Root Token (dev mode): swms-vault-dev-root-token
-# UI: http://localhost:30820
 
 ---
-# ─── ConfigMap: Vault bootstrap script ────────────────────────────
+# ─── Bootstrap script ─────────────────────────────────────────────
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -25,189 +18,187 @@ metadata:
     managed-by: f4-platform
 data:
   bootstrap.sh: |
-    #!/bin/bash
+    #!/bin/sh
+    set -e
 
     VAULT_ADDR="http://vault.auth.svc.cluster.local:8200"
-    VAULT_TOKEN="swms-vault-dev-root-token"
+    SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token 2>/dev/null || echo "")
+    K8S_API="https://kubernetes.default.svc"
+    SECRET_NAME="vault-init-keys"
+    NAMESPACE="auth"
 
-    export VAULT_ADDR VAULT_TOKEN
+    export VAULT_ADDR HOME=/tmp
 
     echo "======================================================"
-    echo " Group F SWMS — Vault Bootstrap"
+    echo " SWMS — Vault Bootstrap"
     echo " Vault: $VAULT_ADDR"
     echo "======================================================"
 
-    # ── Wait for Vault to be ready ────────────────────────────
-    # Use wget (available in hashicorp/vault image) — curl is absent in this image.
-    # vault status CLI returns exit 2 even when unsealed (dev mode quirk).
-    echo "[1/6] Waiting for Vault to be ready..."
-    until wget -qO- "$VAULT_ADDR/v1/sys/health?standbyok=true" > /dev/null 2>&1; do
-      echo "  Vault not ready yet, retrying in 3s..."
+    # ── Wait for Vault HTTP ───────────────────────────────────────
+    echo "[1/7] Waiting for Vault..."
+    until wget -qO- "${VAULT_ADDR}/v1/sys/health?standbyok=true" >/dev/null 2>&1; do
+      echo "  Not ready, retrying in 3s..."
       sleep 3
     done
-    echo "  ✅ Vault is ready and unsealed."
+    echo "  Vault is reachable."
 
-    # Enable set -e AFTER the wait loop to avoid premature exit on non-zero
-    set -e
+    # ── Init (first boot only) ────────────────────────────────────
+    echo "[2/7] Checking initialization..."
+    INITIALIZED=$(wget -qO- "${VAULT_ADDR}/v1/sys/health" 2>/dev/null | grep -o '"initialized":[a-z]*' | cut -d: -f2 || echo "false")
 
-    # ── Enable KV v2 secrets engine ──────────────────────────
-    echo "[2/6] Enabling KV v2 secrets engine at secret/..."
-    vault secrets enable -version=2 -path=secret kv 2>/dev/null || \
-      echo "  ℹ️  KV engine already enabled — skipping."
+    if [ "$INITIALIZED" = "false" ]; then
+      echo "  First boot — initializing Vault..."
+      INIT_JSON=$(wget -qO- \
+        --header="Content-Type: application/json" \
+        --post-data='{"secret_shares":1,"secret_threshold":1}' \
+        "${VAULT_ADDR}/v1/sys/init" 2>/dev/null || echo "")
 
-    # ── Seed Kafka secrets ────────────────────────────────────
-    echo "[3/6] Seeding secrets at secret/swms/kafka..."
+      UNSEAL_KEY=$(echo "$INIT_JSON" | grep -o '"keys_base64":\["[^"]*"' | sed 's/.*\["\([^"]*\)".*/\1/')
+      ROOT_TOKEN=$(echo "$INIT_JSON" | grep -o '"root_token":"[^"]*"' | cut -d'"' -f4)
+
+      if [ -z "$UNSEAL_KEY" ] || [ -z "$ROOT_TOKEN" ]; then
+        echo "  ERROR: init failed. Response: $INIT_JSON"
+        exit 1
+      fi
+
+      echo "  Vault initialized. Saving keys to Secret ${SECRET_NAME}..."
+
+      UNSEAL_B64=$(printf '%s' "$UNSEAL_KEY" | base64 | tr -d '\n')
+      TOKEN_B64=$(printf '%s' "$ROOT_TOKEN" | base64 | tr -d '\n')
+
+      wget -qO- --no-check-certificate \
+        --header="Authorization: Bearer ${SA_TOKEN}" \
+        --header="Content-Type: application/json" \
+        --post-data="{\"apiVersion\":\"v1\",\"kind\":\"Secret\",\"metadata\":{\"name\":\"${SECRET_NAME}\",\"namespace\":\"${NAMESPACE}\"},\"data\":{\"unseal_key\":\"${UNSEAL_B64}\",\"root_token\":\"${TOKEN_B64}\"}}" \
+        "${K8S_API}/api/v1/namespaces/${NAMESPACE}/secrets" >/dev/null 2>&1 || true
+
+      echo "  Keys saved to ${SECRET_NAME} Secret."
+    else
+      echo "  Already initialized."
+      ROOT_TOKEN=$(wget -qO- --no-check-certificate \
+        --header="Authorization: Bearer ${SA_TOKEN}" \
+        "${K8S_API}/api/v1/namespaces/${NAMESPACE}/secrets/${SECRET_NAME}" 2>/dev/null \
+        | grep '"root_token"' | sed 's/.*"root_token":"\([^"]*\)".*/\1/' | base64 -d 2>/dev/null || echo "")
+      UNSEAL_KEY=$(wget -qO- --no-check-certificate \
+        --header="Authorization: Bearer ${SA_TOKEN}" \
+        "${K8S_API}/api/v1/namespaces/${NAMESPACE}/secrets/${SECRET_NAME}" 2>/dev/null \
+        | grep '"unseal_key"' | sed 's/.*"unseal_key":"\([^"]*\)".*/\1/' | base64 -d 2>/dev/null || echo "")
+    fi
+
+    # ── Unseal ───────────────────────────────────────────────────
+    echo "[3/7] Checking seal status..."
+    SEALED=$(wget -qO- "${VAULT_ADDR}/v1/sys/health" 2>/dev/null | grep -o '"sealed":[a-z]*' | cut -d: -f2 || echo "true")
+
+    if [ "$SEALED" = "true" ]; then
+      echo "  Unsealing..."
+      wget -qO- \
+        --header="Content-Type: application/json" \
+        --post-data="{\"key\":\"${UNSEAL_KEY}\"}" \
+        "${VAULT_ADDR}/v1/sys/unseal" >/dev/null 2>&1
+      sleep 2
+      echo "  Unsealed."
+    else
+      echo "  Already unsealed."
+    fi
+
+    export VAULT_TOKEN="$ROOT_TOKEN"
+
+    # ── Enable KV v2 ─────────────────────────────────────────────
+    echo "[4/7] Enabling KV v2 secrets engine..."
+    vault secrets enable -version=2 -path=secret kv 2>/dev/null || echo "  Already enabled."
+
+    # ── Seed secrets ─────────────────────────────────────────────
+    echo "[5/7] Seeding secrets..."
+
     vault kv put secret/swms/kafka \
       sasl_username="user1" \
       sasl_password="QA7aKGtPHV" \
       bootstrap_server="kafka.messaging.svc.cluster.local:9092" \
       security_protocol="SASL_PLAINTEXT" \
       sasl_mechanism="SCRAM-SHA-256"
-    echo "  ✅ Kafka secrets stored."
 
-    # ── Seed Keycloak secrets ─────────────────────────────────
-    echo "[3b/6] Seeding secrets at secret/swms/keycloak..."
     vault kv put secret/swms/keycloak \
       admin_user="admin" \
       admin_password="swms-admin-dev-2026" \
       realm_name="waste-management" \
       service_url="http://keycloak.auth.svc.cluster.local/auth"
-    echo "  ✅ Keycloak secrets stored."
 
-    # ── Seed PostgreSQL secrets ───────────────────────────────
-    echo "[3c/6] Seeding secrets at secret/swms/postgres..."
     vault kv put secret/swms/postgres \
       keycloak_db_password="swms-kc-dev-2026" \
       postgres_password="swms-pg-dev-2026" \
       keycloak_db_url="jdbc:postgresql://keycloak-postgresql.auth.svc.cluster.local:5432/bitnami_keycloak"
-    echo "  ✅ PostgreSQL auth secrets stored."
 
-    # ── Seed PostgreSQL Waste DB secrets ──────────────────────
-    echo "[3d/6] Seeding secrets at secret/swms/postgres-waste..."
     vault kv put secret/swms/postgres-waste \
       password="waste_admin_password"
-    echo "  ✅ PostgreSQL Waste DB secrets stored."
 
-    # ── Seed InfluxDB secrets ─────────────────────────────────
-    echo "[3e/6] Seeding secrets at secret/swms/influxdb..."
     vault kv put secret/swms/influxdb \
       token="my-super-token"
-    echo "  ✅ InfluxDB secrets stored."
 
-    # ── Seed EMQX secrets ─────────────────────────────────────
-    echo "[3f/6] Seeding secrets at secret/swms/emqx..."
     vault kv put secret/swms/emqx \
       dashboard_username="admin" \
       dashboard_password="swms-emqx-dev-2026" \
       sensor_password="swms-sensor-dev-2026" \
       edge_password="swms-edge-dev-2026" \
       admin_password="swms-f1-admin-2026"
-    echo "  ✅ EMQX secrets stored."
 
-    # ── Write Vault Policies ──────────────────────────────────
-    echo "[4/6] Writing access policies..."
+    echo "  All secrets seeded."
 
-    # Platform admin: full read/write to all swms secrets
+    # ── Policies ─────────────────────────────────────────────────
+    echo "[6/7] Writing policies..."
+
     vault policy write platform-admin - <<EOF
-    path "secret/data/swms/*" {
-      capabilities = ["create", "read", "update", "delete", "list"]
-    }
-    path "secret/metadata/swms/*" {
-      capabilities = ["list", "read"]
-    }
-    EOF
-    echo "  ✅ Policy 'platform-admin' created."
+    path "secret/data/swms/*" { capabilities = ["create","read","update","delete","list"] }
+    path "secret/metadata/swms/*" { capabilities = ["list","read"] }
+EOF
 
-    # Kafka consumer: read-only access to Kafka secrets
     vault policy write kafka-consumer - <<EOF
-    path "secret/data/swms/kafka" {
-      capabilities = ["read"]
-    }
-    EOF
-    echo "  ✅ Policy 'kafka-consumer' created."
+    path "secret/data/swms/kafka" { capabilities = ["read"] }
+EOF
 
-    # Keycloak service: read-only access to Keycloak and Postgres secrets
     vault policy write keycloak-service - <<EOF
-    path "secret/data/swms/keycloak" {
-      capabilities = ["read"]
-    }
-    path "secret/data/swms/postgres" {
-      capabilities = ["read"]
-    }
-    EOF
-    echo "  ✅ Policy 'keycloak-service' created."
+    path "secret/data/swms/keycloak" { capabilities = ["read"] }
+    path "secret/data/swms/postgres" { capabilities = ["read"] }
+EOF
 
-    # ESO service: read access to all secrets to sync them
     vault policy write eso-service - <<EOF
-    path "secret/data/swms/*" {
-      capabilities = ["read"]
-    }
-    EOF
-    echo "  ✅ Policy 'eso-service' created."
+    path "secret/data/swms/*" { capabilities = ["read"] }
+EOF
 
-    # ── Enable Kubernetes Auth Method ─────────────────────────
-    echo "[5/6] Enabling Kubernetes auth method..."
-    vault auth enable kubernetes 2>/dev/null || \
-      echo "  ℹ️  Kubernetes auth already enabled — skipping."
+    echo "  Policies written."
 
+    # ── Kubernetes auth ───────────────────────────────────────────
+    echo "[7/7] Configuring Kubernetes auth..."
+    vault auth enable kubernetes 2>/dev/null || echo "  Already enabled."
     vault write auth/kubernetes/config \
       kubernetes_host="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
-    echo "  ✅ Kubernetes auth configured."
 
-    # ── Create Kubernetes Auth Roles ──────────────────────────
-    echo "[6/6] Creating Kubernetes auth roles..."
-
-    # platform-admin: for F4 setup scripts / admin jobs
     vault write auth/kubernetes/role/platform-admin \
       bound_service_account_names="vault-admin" \
       bound_service_account_namespaces="auth" \
-      policies="platform-admin" \
-      token_ttl="1h"
-    echo "  ✅ Role 'platform-admin' created."
+      policies="platform-admin" token_ttl="1h"
 
-    # kafka-consumer: for F1/F2 microservices that read from Kafka
     vault write auth/kubernetes/role/kafka-consumer \
       bound_service_account_names="default" \
       bound_service_account_namespaces="waste-dev,waste-prod,messaging" \
-      policies="kafka-consumer" \
-      token_ttl="2h"
-    echo "  ✅ Role 'kafka-consumer' created."
+      policies="kafka-consumer" token_ttl="2h"
 
-    # keycloak-service: for F3 services that need Keycloak creds
     vault write auth/kubernetes/role/keycloak-service \
       bound_service_account_names="default" \
       bound_service_account_namespaces="waste-dev,waste-prod,auth" \
-      policies="keycloak-service" \
-      token_ttl="2h"
-    echo "  ✅ Role 'keycloak-service' created."
+      policies="keycloak-service" token_ttl="2h"
 
-    # eso-service: for External Secrets Operator
     vault write auth/kubernetes/role/eso-service \
       bound_service_account_names="external-secrets" \
       bound_service_account_namespaces="eso" \
-      policies="eso-service" \
-      token_ttl="2h"
-    echo "  ✅ Role 'eso-service' created."
+      policies="eso-service" token_ttl="2h"
 
     echo ""
     echo "======================================================"
-    echo " ✅ Vault Bootstrap Complete!"
-    echo " Root Token: $VAULT_TOKEN"
-    echo " UI: http://localhost:30820 (via minikube service)"
-    echo ""
-    echo " Secrets seeded:"
-    echo "   secret/swms/kafka     — SASL credentials"
-    echo "   secret/swms/keycloak  — Admin credentials"
-    echo "   secret/swms/postgres  — DB passwords"
-    echo ""
-    echo " Kubernetes auth roles:"
-    echo "   platform-admin   → auth namespace"
-    echo "   kafka-consumer   → waste-dev, waste-prod, messaging"
-    echo "   keycloak-service → waste-dev, waste-prod, auth"
+    echo " Vault Bootstrap Complete!"
     echo "======================================================"
 
 ---
-# ─── ServiceAccount for the bootstrap Job ─────────────────────────
+# ─── ServiceAccount for bootstrap Job ─────────────────────────────
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -218,8 +209,63 @@ metadata:
     managed-by: f4-platform
 
 ---
-# ─── ClusterRoleBinding for Kubernetes auth ────────────────────────
-# Vault needs to verify pod service account tokens against the cluster
+# ─── RBAC: bootstrap Job can manage vault-init-keys Secret ────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vault-bootstrap-secret-manager
+  namespace: auth
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["vault-init-keys"]
+    verbs: ["get", "create", "update", "patch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vault-bootstrap-secret-manager
+  namespace: auth
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: vault-bootstrap-secret-manager
+subjects:
+  - kind: ServiceAccount
+    name: vault-bootstrap
+    namespace: auth
+
+---
+# ─── RBAC: Vault pod can read vault-init-keys for postStart hook ──
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vault-pod-secret-reader
+  namespace: auth
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["vault-init-keys"]
+    verbs: ["get"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vault-pod-secret-reader
+  namespace: auth
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: vault-pod-secret-reader
+subjects:
+  - kind: ServiceAccount
+    name: vault
+    namespace: auth
+
+---
+# ─── ClusterRoleBinding for Kubernetes auth token review ──────────
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -250,22 +296,16 @@ spec:
   ttlSecondsAfterFinished: 600
   backoffLimit: 5
   template:
-    metadata:
-      name: vault-bootstrap
     spec:
       restartPolicy: OnFailure
       serviceAccountName: vault-bootstrap
       containers:
         - name: vault-bootstrap
           image: hashicorp/vault:1.17
-          command:
-            - /bin/sh
-            - /scripts/bootstrap.sh
+          command: ["/bin/sh", "/scripts/bootstrap.sh"]
           env:
             - name: VAULT_ADDR
               value: "http://vault.auth.svc.cluster.local:8200"
-            - name: VAULT_TOKEN
-              value: "swms-vault-dev-root-token"
             - name: HOME
               value: "/tmp"
           resources:

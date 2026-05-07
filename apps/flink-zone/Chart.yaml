@@ -1,9 +1,0 @@
-apiVersion: v2
-name: flink-zone
-description: Flink zone statistics processor — waste.bin.processed → waste.zone.statistics
-type: application
-version: 1.0.0
-dependencies:
-  - name: base-service
-    version: 1.0.0
-    repository: "file://../../helm/charts/base-service"

@@ -1,9 +1,0 @@
-apiVersion: v2
-name: flink-sensor
-description: Flink sensor offline detector — monitors waste.bin.telemetry for stale devices
-type: application
-version: 1.0.0
-dependencies:
-  - name: base-service
-    version: 1.0.0
-    repository: "file://../../helm/charts/base-service"

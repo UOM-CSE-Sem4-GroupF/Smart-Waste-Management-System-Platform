@@ -1,29 +1,42 @@
 # Group F — Smart Waste Management System
-# HashiCorp Vault — Helm Values (Local Dev)
-# Chart: hashicorp/vault (official Helm chart)
-# Deployed into: auth namespace
-# Mode: Development (in-memory, auto-unsealed, single node)
+# HashiCorp Vault — Helm Values
+# Chart: hashicorp/vault
+# Mode: Standalone with file storage (survives pod restarts)
 #
-# Usage: helm upgrade --install vault hashicorp/vault -n auth -f auth/vault/values-dev.yaml
+# Auto-unseal: postStart hook reads the unseal key from the
+# vault-init-keys Secret (created by the vault-bootstrap Job on first boot).
 
 global:
   enabled: true
 
-# ─── Server Configuration ────────────────────────────────────────
 server:
-  # Dev mode: single node, in-memory storage, auto-unsealed
-  # Root token is printed in pod logs on first startup
-  dev:
+  standalone:
     enabled: true
-    devRootToken: "swms-vault-dev-root-token"
+    config: |
+      ui = true
+      listener "tcp" {
+        address     = "[::]:8200"
+        tls_disable = true
+      }
+      storage "file" {
+        path = "/vault/data"
+      }
 
-  # Expose API internally only — UI service below handles external access
+  # 1 Gi block volume — persists all secrets and auth config across restarts
+  dataStorage:
+    enabled: true
+    size: 1Gi
+    storageClass: do-block-storage
+    accessMode: ReadWriteOnce
+
+  auditStorage:
+    enabled: false
+
   service:
     enabled: true
     type: ClusterIP
     port: 8200
 
-  # Resource limits appropriate for Minikube
   resources:
     requests:
       memory: 128Mi
@@ -32,35 +45,56 @@ server:
       memory: 256Mi
       cpu: 500m
 
-  # Readiness probe — Vault is ready when it returns unsealed status
+  # Vault starts sealed after every pod restart.
+  # This hook fires once the container is up and auto-unseals using
+  # the key stored in the vault-init-keys Secret by the bootstrap Job.
+  postStart:
+    - /bin/sh
+    - -c
+    - |
+      sleep 10
+      SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token 2>/dev/null || echo "")
+      VAULT_ADDR=http://127.0.0.1:8200
+
+      # Wait until Vault HTTP is reachable
+      until wget -qO- "${VAULT_ADDR}/v1/sys/health?standbyok=true" >/dev/null 2>&1; do
+        sleep 3
+      done
+
+      # Only unseal if currently sealed
+      SEALED=$(wget -qO- "${VAULT_ADDR}/v1/sys/health" 2>/dev/null | grep -o '"sealed":[a-z]*' | cut -d: -f2 || echo "true")
+      if [ "$SEALED" = "true" ]; then
+        SECRET=$(wget -qO- --no-check-certificate \
+          --header="Authorization: Bearer ${SA_TOKEN}" \
+          "https://kubernetes.default.svc/api/v1/namespaces/auth/secrets/vault-init-keys" \
+          2>/dev/null || echo "")
+        UNSEAL_KEY=$(echo "$SECRET" | grep '"unseal_key"' | sed 's/.*"unseal_key":"\([^"]*\)".*/\1/' | base64 -d 2>/dev/null || echo "")
+        if [ -n "$UNSEAL_KEY" ]; then
+          wget -qO- --no-check-certificate \
+            --header="Content-Type: application/json" \
+            --post-data="{\"key\":\"${UNSEAL_KEY}\"}" \
+            "${VAULT_ADDR}/v1/sys/unseal" >/dev/null 2>&1
+          echo "Vault auto-unsealed."
+        else
+          echo "No unseal key found — run vault-bootstrap Job."
+        fi
+      fi
+
+  # Readiness: treat sealed/uninit as 204 (not 503) so the pod stays Running
+  # while the postStart hook unseals it.
   readinessProbe:
     enabled: true
     path: "/v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204"
 
-  # Liveness probe
   livenessProbe:
     enabled: true
     path: "/v1/sys/health?standbyok=true"
     initialDelaySeconds: 60
 
-  # Data storage — in-memory for dev mode (no PVC needed)
-  dataStorage:
-    enabled: false
-
-  # Audit storage disabled for dev mode
-  auditStorage:
-    enabled: false
-
-# ─── UI ──────────────────────────────────────────────────────────
 ui:
   enabled: true
   serviceType: ClusterIP
 
-# ─── Injector (Vault Agent Injector) ─────────────────────────────
-# Enabled: this deploys the mutating webhook that auto-injects
-# secrets as sidecar containers into annotated pods.
-# Phase 3: Vault is running but injector wiring to existing services
-#          is deferred — other teams' services are not affected.
 injector:
   enabled: true
   resources:
