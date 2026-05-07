@@ -271,6 +271,85 @@ kubectl wait --for=condition=complete job/emqx-bootstrap -n messaging --timeout=
   && log_success "EMQX bootstrap complete. MQTT ↔ Kafka bridge is live." \
   || log_warn "Bootstrap job still running. Check: kubectl logs -n messaging -l job-name=emqx-bootstrap"
 
+# --- Step 11: Deploy Hyperledger Fabric Blockchain ---
+log_step "Step 11: Deploying Hyperledger Fabric (blockchain namespace)"
+
+# RBAC + PVCs
+log_info "Applying RBAC and PVCs..."
+kubectl apply -f ./blockchain/network/00-rbac.yaml
+kubectl apply -f ./blockchain/network/00-pvc.yaml
+log_success "RBAC and PVCs created."
+
+# Setup Job — generates crypto material + genesis block + K8s Secrets
+# Only runs once; skip if Secrets already exist from a previous run.
+if kubectl get secret fabric-genesis -n blockchain &>/dev/null; then
+  log_warn "fabric-genesis Secret already exists — skipping fabric-setup Job."
+else
+  log_info "Running fabric-setup Job (cryptogen + configtxgen + Secret creation)..."
+  kubectl apply -f ./blockchain/network/01-setup-job.yaml
+  log_info "Waiting for fabric-setup Job to complete (up to 3 min)..."
+  kubectl wait --for=condition=complete job/fabric-setup \
+    -n blockchain --timeout=180s \
+    && log_success "Crypto material and genesis block generated." \
+    || log_warn "fabric-setup still running. Check: kubectl logs -n blockchain -l job-name=fabric-setup"
+fi
+
+# Orderer
+log_info "Deploying Fabric orderer..."
+kubectl apply -f ./blockchain/network/02-orderer.yaml
+log_info "Waiting for orderer to be ready (up to 2 min)..."
+kubectl wait --for=condition=ready pod \
+  -l app=fabric-orderer \
+  -n blockchain \
+  --timeout=120s \
+  && log_success "Orderer is ready." \
+  || log_warn "Orderer not ready yet. Check: kubectl logs -n blockchain -l app=fabric-orderer"
+
+# Peer
+log_info "Deploying Fabric peer0..."
+kubectl apply -f ./blockchain/network/03-peer.yaml
+log_info "Waiting for peer to be ready (up to 2 min)..."
+kubectl wait --for=condition=ready pod \
+  -l app=fabric-peer \
+  -n blockchain \
+  --timeout=120s \
+  && log_success "Peer0 is ready." \
+  || log_warn "Peer0 not ready yet. Check: kubectl logs -n blockchain -l app=fabric-peer"
+
+# Channel setup Job
+log_info "Running channel setup Job (waste-collection-channel)..."
+kubectl apply -f ./blockchain/network/04-channel-setup-job.yaml
+log_info "Waiting for channel setup Job to complete (up to 3 min)..."
+kubectl wait --for=condition=complete job/fabric-channel-setup \
+  -n blockchain --timeout=180s \
+  && log_success "Channel waste-collection-channel created." \
+  || log_warn "Channel setup still running. Check: kubectl logs -n blockchain -l job-name=fabric-channel-setup"
+
+# Chaincode server (CCaaS deployment — image must be built first)
+log_info "Applying chaincode server Deployment (collection-record-cc)..."
+log_warn "NOTE: Build the chaincode image first:"
+log_warn "  eval \$(minikube docker-env)"
+log_warn "  docker build -t collection-record-cc:1.0 ./blockchain/chaincode/"
+kubectl apply -f ./blockchain/network/05-chaincode-server.yaml
+
+# Chaincode deploy Job
+log_info "Running chaincode deploy Job (install + approve + commit)..."
+kubectl apply -f ./blockchain/network/06-chaincode-deploy-job.yaml
+log_info "Waiting for chaincode deploy Job to complete (up to 5 min)..."
+kubectl wait --for=condition=complete job/fabric-chaincode-deploy \
+  -n blockchain --timeout=300s \
+  && log_success "Chaincode collection-record v1.0 committed to channel." \
+  || log_warn "Chaincode deploy still running. Check: kubectl logs -n blockchain -l job-name=fabric-chaincode-deploy"
+
+# API wrapper
+log_info "Applying blockchain API wrapper (Service 18)..."
+log_warn "NOTE: Build the API wrapper image first:"
+log_warn "  eval \$(minikube docker-env)"
+log_warn "  docker build -t blockchain-api-wrapper:1.0 ./blockchain/api-wrapper/"
+kubectl apply -f ./blockchain/api-wrapper/k8s/service.yaml
+kubectl apply -f ./blockchain/api-wrapper/k8s/deployment.yaml
+log_success "Blockchain API wrapper deployed."
+
 # --- Final: Cluster status ---
 log_step "Final: Cluster status"
 
@@ -311,6 +390,13 @@ echo ""
 echo "  Test Users (Keycloak):"
 echo "    supervisor@swms-dev.local / swms-supervisor-dev"
 echo "    driver@swms-dev.local     / swms-driver-dev"
+echo ""
+echo "  Blockchain (Hyperledger Fabric):"
+echo "    Channel:   waste-collection-channel"
+echo "    Chaincode: collection-record v1.0"
+echo "    API:       http://blockchain-api-wrapper.blockchain.svc.cluster.local:8080 (K8s-internal)"
+echo "    Kong:      GET /api/v1/records/:job_id  (JWT required)"
+echo "    Kong:      GET /api/v1/records/zone/:id (JWT required)"
 echo ""
 echo "  Next steps:"
 echo "  1. Deploy Prometheus + Grafana (monitoring/)"
