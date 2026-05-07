@@ -1,0 +1,17 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: kafka-broker-failure
+  namespace: messaging
+spec:
+  selector:
+    labelSelectors:
+      "app.kubernetes.io/name": "kafka"
+      "app.kubernetes.io/instance": "kafka"
+      "app.kubernetes.io/component": "broker"
+  mode: one
+  action: pod-failure
+  duration: "30s"
+  gracePeriod: 0
+  scheduler:
+    cron: "@every 1h"
