@@ -305,6 +305,50 @@ data:
                   policy: local
 
       # ---------------------------------------------------------
+      # F4 — Blockchain API Wrapper
+      # Immutable audit trail — query collection records by job ID or zone
+      # POST /records is internal-only (F3 → blockchain namespace via K8s DNS)
+      # GET  /records/* is public (Kong JWT-protected)
+      # ---------------------------------------------------------
+      - name: blockchain-api-wrapper
+        url: http://blockchain-api-wrapper.blockchain.svc.cluster.local:8080
+        connect_timeout: 5000
+        read_timeout: 15000
+        write_timeout: 10000
+        routes:
+          - name: blockchain-records-query
+            paths:
+              - /api/v1/records
+            strip_path: false
+            methods:
+              - GET
+            plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+              - name: rate-limiting
+                config:
+                  minute: 60
+                  policy: local
+
+          - name: blockchain-records-zone
+            paths:
+              - /api/v1/records/zone
+            strip_path: false
+            methods:
+              - GET
+            plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+              - name: rate-limiting
+                config:
+                  minute: 30
+                  policy: local
+
+      # ---------------------------------------------------------
       # F2 — Route Optimizer Service
       # Optimal collection route calculation
       # ---------------------------------------------------------

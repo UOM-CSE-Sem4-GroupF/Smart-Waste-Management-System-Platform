@@ -141,6 +141,21 @@ data:
       edge_password="swms-edge-dev-2026" \
       admin_password="swms-f1-admin-2026"
 
+    # ── Seed Hyperledger Fabric secrets ──────────────────────
+    echo "[5b/7] Seeding secrets at secret/swms/hyperledger..."
+    # Placeholder values — overwritten by fabric-setup Job once crypto is generated.
+    vault kv put secret/swms/hyperledger \
+      channel_name="waste-collection-channel" \
+      chaincode_name="collection-record" \
+      chaincode_version="1.0" \
+      msp_id="WasteMgmtMSP" \
+      peer_endpoint="peer0.blockchain.svc.cluster.local:7051" \
+      orderer_endpoint="orderer.blockchain.svc.cluster.local:7050" \
+      admin_cert_path="/etc/fabric/identity/cert.pem" \
+      admin_key_path="/etc/fabric/identity/key.pem" \
+      peer_tlsca_path="/etc/fabric/tls/peer-tlsca.pem"
+    echo "  ✅ Hyperledger secrets stored."
+
     echo "  All secrets seeded."
 
     # ── Policies ─────────────────────────────────────────────────
@@ -163,6 +178,14 @@ EOF
     vault policy write eso-service - <<EOF
     path "secret/data/swms/*" { capabilities = ["read"] }
 EOF
+
+    # Hyperledger service: read-only access to Fabric connection config
+    vault policy write hyperledger-service - <<EOF
+    path "secret/data/swms/hyperledger" {
+      capabilities = ["read"]
+    }
+    EOF
+    echo "  ✅ Policy 'hyperledger-service' created."
 
     echo "  Policies written."
 
@@ -192,9 +215,35 @@ EOF
       bound_service_account_namespaces="eso" \
       policies="eso-service" token_ttl="2h"
 
+    # hyperledger-service: for F4 blockchain API wrapper
+    vault write auth/kubernetes/role/hyperledger-service \
+      bound_service_account_names="default" \
+      bound_service_account_namespaces="blockchain" \
+      policies="hyperledger-service" \
+      token_ttl="2h"
+    echo "  ✅ Role 'hyperledger-service' created."
+
     echo ""
     echo "======================================================"
-    echo " Vault Bootstrap Complete!"
+    echo " ✅ Vault Bootstrap Complete!"
+    echo " Root Token: $VAULT_TOKEN"
+    echo " UI: http://localhost:30820 (via minikube service)"
+    echo ""
+    echo " Secrets seeded:"
+    echo "   secret/swms/kafka        — SASL credentials"
+    echo "   secret/swms/keycloak     — Admin credentials"
+    echo "   secret/swms/postgres     — DB passwords"
+    echo "   secret/swms/postgres-waste — Waste DB password"
+    echo "   secret/swms/influxdb     — InfluxDB token"
+    echo "   secret/swms/emqx         — MQTT credentials"
+    echo "   secret/swms/hyperledger  — Fabric connection config"
+    echo ""
+    echo " Kubernetes auth roles:"
+    echo "   platform-admin      → auth namespace"
+    echo "   kafka-consumer      → waste-dev, waste-prod, messaging"
+    echo "   keycloak-service    → waste-dev, waste-prod, auth"
+    echo "   eso-service         → eso namespace"
+    echo "   hyperledger-service → blockchain namespace"
     echo "======================================================"
 
 ---

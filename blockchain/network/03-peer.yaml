@@ -1,0 +1,185 @@
+# Group F SWMS — Hyperledger Fabric Peer
+# Owner: F4 Platform Team
+#
+# peer0 for WasteMgmtOrg. Reads TLS + MSP from K8s Secrets.
+# Mounts the Docker socket so the peer can launch chaincode containers
+# (used only if not using the CCAAS chaincode server approach).
+#
+# Ports:
+#   7051 — gRPC (endorsement, gossip, block delivery)
+#   7052 — Chaincode gRPC listen address
+#   8443 — Operations HTTP (/healthz, /metrics)
+#
+# Apply AFTER orderer is ready:
+#   kubectl apply -f blockchain/network/03-peer.yaml
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: peer0
+  namespace: blockchain
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    app: fabric-peer
+spec:
+  serviceName: peer0
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fabric-peer
+  template:
+    metadata:
+      labels:
+        app: fabric-peer
+    spec:
+      initContainers:
+        # Untar the peer MSP archive into the directory structure the peer binary expects
+        - name: setup-msp
+          image: busybox:1.36
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              mkdir -p /var/hyperledger/peer/msp
+              tar xzf /etc/fabric/peer-msp/msp.tar.gz -C /var/hyperledger/peer/msp
+              echo "Peer MSP ready."
+              ls /var/hyperledger/peer/msp/
+          volumeMounts:
+            - name: peer-msp-secret
+              mountPath: /etc/fabric/peer-msp
+            - name: peer-data
+              mountPath: /var/hyperledger/peer
+
+      containers:
+        - name: peer
+          image: hyperledger/fabric-peer:2.5
+          ports:
+            - containerPort: 7051
+              name: grpc
+            - containerPort: 7052
+              name: chaincode
+            - containerPort: 8443
+              name: operations
+          env:
+            - name: FABRIC_LOGGING_SPEC
+              value: "INFO"
+            - name: CORE_PEER_ID
+              value: "peer0.wasteMgmt.swms.local"
+            - name: CORE_PEER_ADDRESS
+              value: "peer0.blockchain.svc.cluster.local:7051"
+            - name: CORE_PEER_LISTENADDRESS
+              value: "0.0.0.0:7051"
+            # Chaincode-as-a-service: peer dials out to the chaincode server
+            - name: CORE_PEER_CHAINCODEADDRESS
+              value: "peer0.blockchain.svc.cluster.local:7052"
+            - name: CORE_PEER_CHAINCODELISTENADDRESS
+              value: "0.0.0.0:7052"
+            # Gossip — single peer so bootstrap and external endpoint are the same
+            - name: CORE_PEER_GOSSIP_BOOTSTRAP
+              value: "peer0.blockchain.svc.cluster.local:7051"
+            - name: CORE_PEER_GOSSIP_EXTERNALENDPOINT
+              value: "peer0.blockchain.svc.cluster.local:7051"
+            - name: CORE_PEER_GOSSIP_USELEADERELECTION
+              value: "true"
+            - name: CORE_PEER_GOSSIP_ORGLEADER
+              value: "false"
+            - name: CORE_PEER_LOCALMSPID
+              value: "WasteMgmtMSP"
+            - name: CORE_PEER_MSPCONFIGPATH
+              value: "/var/hyperledger/peer/msp"
+            # TLS — mTLS enforced
+            - name: CORE_PEER_TLS_ENABLED
+              value: "true"
+            - name: CORE_PEER_TLS_CERT_FILE
+              value: "/var/hyperledger/peer/tls/tls.crt"
+            - name: CORE_PEER_TLS_KEY_FILE
+              value: "/var/hyperledger/peer/tls/tls.key"
+            - name: CORE_PEER_TLS_ROOTCERT_FILE
+              value: "/var/hyperledger/peer/tls/ca.crt"
+            # Docker socket for legacy chaincode launcher (fallback if CCAAS unused)
+            - name: CORE_VM_ENDPOINT
+              value: "unix:///host/var/run/docker.sock"
+            - name: CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE
+              value: "bridge"
+            # LevelDB state database (CouchDB not needed for dev)
+            - name: CORE_LEDGER_STATE_STATEDATABASE
+              value: "leveldb"
+            # Operations
+            - name: CORE_OPERATIONS_LISTENADDRESS
+              value: "0.0.0.0:8443"
+            - name: CORE_METRICS_PROVIDER
+              value: "prometheus"
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 500m
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8443
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8443
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+          volumeMounts:
+            - name: peer-tls-secret
+              mountPath: /var/hyperledger/peer/tls
+              readOnly: true
+            - name: peer-data
+              mountPath: /var/hyperledger/production
+              subPath: production
+            # Docker socket — allows peer to launch chaincode containers on host Docker
+            - name: docker-sock
+              mountPath: /host/var/run/docker.sock
+
+      volumes:
+        - name: peer-tls-secret
+          secret:
+            secretName: fabric-peer-tls
+        - name: peer-msp-secret
+          secret:
+            secretName: fabric-peer-msp
+        - name: peer-data
+          persistentVolumeClaim:
+            claimName: peer-data-pvc
+        - name: docker-sock
+          hostPath:
+            path: /var/run/docker.sock
+            type: Socket
+
+---
+# Headless service for peer gRPC + gossip
+apiVersion: v1
+kind: Service
+metadata:
+  name: peer0
+  namespace: blockchain
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    app: fabric-peer
+spec:
+  selector:
+    app: fabric-peer
+  clusterIP: None
+  ports:
+    - name: grpc
+      port: 7051
+      targetPort: 7051
+    - name: chaincode
+      port: 7052
+      targetPort: 7052
+    - name: operations
+      port: 8443
+      targetPort: 8443

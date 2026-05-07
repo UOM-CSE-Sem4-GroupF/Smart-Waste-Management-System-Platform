@@ -1,0 +1,54 @@
+# Group F SWMS — Blockchain RBAC
+# Owner: F4 Platform Team
+#
+# ServiceAccount + Role for the fabric-setup Job.
+# The setup Job uses the K8s API (via curl + service account token) to create
+# Secrets for orderer/peer crypto material after cryptogen runs.
+#
+# Apply: kubectl apply -f blockchain/network/00-rbac.yaml
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fabric-setup
+  namespace: blockchain
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+
+---
+# Permits the setup Job to create/update Secrets in the blockchain namespace only
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: fabric-setup-role
+  namespace: blockchain
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+rules:
+  - apiGroups: [""]
+    resources: ["secrets", "configmaps"]
+    verbs: ["create", "get", "update", "patch", "delete", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "patch", "update"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: fabric-setup-binding
+  namespace: blockchain
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+subjects:
+  - kind: ServiceAccount
+    name: fabric-setup
+    namespace: blockchain
+roleRef:
+  kind: Role
+  name: fabric-setup-role
+  apiGroup: rbac.authorization.k8s.io

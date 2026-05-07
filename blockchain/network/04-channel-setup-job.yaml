@@ -1,0 +1,181 @@
+# Group F SWMS — Fabric Channel Setup Job
+# Owner: F4 Platform Team
+#
+# Uses Fabric tools CLI to:
+#   1. Join the orderer to waste-collection-channel via osnadmin (channel participation API)
+#   2. Join peer0 to the channel
+#   3. Update the anchor peer configuration
+#
+# Prerequisites: orderer and peer0 must be Running and healthy.
+# Apply: kubectl apply -f blockchain/network/04-channel-setup-job.yaml
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: channel-setup-script
+  namespace: blockchain
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+data:
+  channel-setup.sh: |
+    #!/bin/bash
+    set -euo pipefail
+
+    CHANNEL_ID="waste-collection-channel"
+    ORDERER_ADDR="orderer.blockchain.svc.cluster.local:7050"
+    ORDERER_ADMIN_ADDR="orderer.blockchain.svc.cluster.local:7053"
+    PEER_ADDR="peer0.blockchain.svc.cluster.local:7051"
+    ADMIN_MSP=/var/hyperledger/admin/msp
+    PEER_TLS_CA=/var/hyperledger/admin/tls/ca.crt
+    ORDERER_TLS_CA=/var/hyperledger/admin/tls/orderer-ca.crt
+    GENESIS=/var/hyperledger/genesis/genesis.block
+
+    echo "=============================================="
+    echo " Channel Setup: $CHANNEL_ID"
+    echo "=============================================="
+
+    # ── Wait for orderer to be ready ─────────────────────────────────
+    echo "[1/4] Waiting for orderer..."
+    until curl -sk "https://$ORDERER_ADDR" > /dev/null 2>&1 || \
+          osnadmin channel list \
+            -o "$ORDERER_ADMIN_ADDR" \
+            --ca-file "$ORDERER_TLS_CA" \
+            --client-cert "$ADMIN_MSP/signcerts/cert.pem" \
+            --client-key "$ADMIN_MSP/keystore/key.pem" > /dev/null 2>&1; do
+      echo "  Orderer not ready, retrying in 5s..."
+      sleep 5
+    done
+    echo "  Orderer ready."
+
+    # ── Wait for peer to be ready ─────────────────────────────────────
+    echo "[2/4] Waiting for peer..."
+    until peer node status \
+      --peerAddress "$PEER_ADDR" \
+      --tlsRootCertFile "$PEER_TLS_CA" > /dev/null 2>&1; do
+      echo "  Peer not ready, retrying in 5s..."
+      sleep 5
+    done
+    echo "  Peer ready."
+
+    # ── Join orderer to channel via channel participation API ─────────
+    echo "[3/4] Joining orderer to channel '$CHANNEL_ID'..."
+    if osnadmin channel list \
+        -o "$ORDERER_ADMIN_ADDR" \
+        --ca-file "$ORDERER_TLS_CA" \
+        --client-cert "$ADMIN_MSP/signcerts/cert.pem" \
+        --client-key "$ADMIN_MSP/keystore/key.pem" 2>&1 | grep -q "$CHANNEL_ID"; then
+      echo "  Orderer already in channel — skipping."
+    else
+      osnadmin channel join \
+        --channelID "$CHANNEL_ID" \
+        --config-block "$GENESIS" \
+        -o "$ORDERER_ADMIN_ADDR" \
+        --ca-file "$ORDERER_TLS_CA" \
+        --client-cert "$ADMIN_MSP/signcerts/cert.pem" \
+        --client-key "$ADMIN_MSP/keystore/key.pem"
+      echo "  Orderer joined channel."
+    fi
+
+    # ── Join peer to channel ──────────────────────────────────────────
+    echo "[4/4] Joining peer0 to channel '$CHANNEL_ID'..."
+    export CORE_PEER_LOCALMSPID="WasteMgmtMSP"
+    export CORE_PEER_MSPCONFIGPATH="$ADMIN_MSP"
+    export CORE_PEER_ADDRESS="$PEER_ADDR"
+    export CORE_PEER_TLS_ENABLED="true"
+    export CORE_PEER_TLS_ROOTCERT_FILE="$PEER_TLS_CA"
+
+    if peer channel list 2>&1 | grep -q "$CHANNEL_ID"; then
+      echo "  Peer already on channel — skipping."
+    else
+      peer channel join -b "$GENESIS"
+      echo "  Peer joined channel."
+    fi
+
+    echo ""
+    echo "=============================================="
+    echo " Channel '$CHANNEL_ID' is live!"
+    echo " Next: apply 05-chaincode-server.yaml"
+    echo "        then 06-chaincode-deploy-job.yaml"
+    echo "=============================================="
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: fabric-channel-setup
+  namespace: blockchain
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    component: channel-setup
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        app: fabric-channel-setup
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        # Untar admin MSP into the working directory
+        - name: setup-admin-msp
+          image: busybox:1.36
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              mkdir -p /var/hyperledger/admin/msp
+              tar xzf /etc/fabric/admin-msp/msp.tar.gz -C /var/hyperledger/admin/msp
+              # Normalise keystore filename so CLI scripts can use a predictable path
+              KEYFILE=$(ls /var/hyperledger/admin/msp/keystore/)
+              cp "/var/hyperledger/admin/msp/keystore/$KEYFILE" /var/hyperledger/admin/msp/keystore/key.pem
+              # Normalise signcert filename
+              CERTFILE=$(ls /var/hyperledger/admin/msp/signcerts/)
+              cp "/var/hyperledger/admin/msp/signcerts/$CERTFILE" /var/hyperledger/admin/msp/signcerts/cert.pem
+              echo "Admin MSP ready."
+          volumeMounts:
+            - name: admin-msp-secret
+              mountPath: /etc/fabric/admin-msp
+            - name: workdir
+              mountPath: /var/hyperledger/admin
+      containers:
+        - name: channel-setup
+          image: hyperledger/fabric-tools:2.5
+          command: ["/bin/bash", "/scripts/channel-setup.sh"]
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 100m
+            limits:
+              memory: 256Mi
+              cpu: 300m
+          volumeMounts:
+            - name: channel-setup-script
+              mountPath: /scripts
+            - name: workdir
+              mountPath: /var/hyperledger/admin
+            - name: admin-tls-secret
+              mountPath: /var/hyperledger/admin/tls
+              readOnly: true
+            - name: genesis-secret
+              mountPath: /var/hyperledger/genesis
+              readOnly: true
+      volumes:
+        - name: channel-setup-script
+          configMap:
+            name: channel-setup-script
+            defaultMode: 0755
+        - name: admin-msp-secret
+          secret:
+            secretName: fabric-admin-msp
+        - name: admin-tls-secret
+          secret:
+            secretName: fabric-admin-tls
+        - name: genesis-secret
+          secret:
+            secretName: fabric-genesis
+        - name: workdir
+          emptyDir: {}

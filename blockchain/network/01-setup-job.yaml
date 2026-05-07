@@ -1,0 +1,474 @@
+# Group F SWMS — Hyperledger Fabric Setup Job
+# Owner: F4 Platform Team
+#
+# Runs cryptogen + configtxgen, then stores all material as K8s Secrets
+# using the K8s REST API (curl + mounted ServiceAccount token).
+#
+# Secrets created:
+#   fabric-orderer-tls   — orderer TLS server cert/key/ca
+#   fabric-orderer-msp   — orderer MSP as tar.gz
+#   fabric-peer-tls      — peer TLS server cert/key/ca
+#   fabric-peer-msp      — peer MSP as tar.gz
+#   fabric-admin-msp     — admin MSP (for channel/chaincode CLI jobs)
+#   fabric-admin-tls     — admin TLS certs
+#   fabric-root-ca       — root CA certs for SDK connection profile
+#   fabric-genesis       — waste-collection-channel genesis block
+#
+# Run once after applying 00-rbac.yaml and 00-pvc.yaml.
+# Apply: kubectl apply -f blockchain/network/01-setup-job.yaml
+
+---
+# ConfigMap: crypto-config.yaml for cryptogen
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fabric-crypto-config
+  namespace: blockchain
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+data:
+  crypto-config.yaml: |
+    OrdererOrgs:
+      - Name: Orderer
+        Domain: swms.local
+        EnableNodeOUs: true
+        Specs:
+          - Hostname: orderer
+            SANS:
+              - orderer.blockchain.svc.cluster.local
+              - localhost
+              - 127.0.0.1
+    PeerOrgs:
+      - Name: WasteMgmt
+        Domain: wasteMgmt.swms.local
+        EnableNodeOUs: true
+        Template:
+          Count: 1
+          SANS:
+            - "{{.Hostname}}.blockchain.svc.cluster.local"
+            - localhost
+            - 127.0.0.1
+        Users:
+          Count: 1
+
+---
+# ConfigMap: configtx.yaml for configtxgen
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fabric-configtx
+  namespace: blockchain
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+data:
+  configtx.yaml: |
+    Organizations:
+      - &OrdererOrg
+        Name: OrdererOrg
+        ID: OrdererMSP
+        MSPDir: /tmp/crypto/ordererOrganizations/swms.local/msp
+        Policies:
+          Readers:
+            Type: Signature
+            Rule: "OR('OrdererMSP.member')"
+          Writers:
+            Type: Signature
+            Rule: "OR('OrdererMSP.member')"
+          Admins:
+            Type: Signature
+            Rule: "OR('OrdererMSP.admin')"
+          Endorsement:
+            Type: Signature
+            Rule: "OR('OrdererMSP.member')"
+      - &WasteMgmtOrg
+        Name: WasteMgmtOrg
+        ID: WasteMgmtMSP
+        MSPDir: /tmp/crypto/peerOrganizations/wasteMgmt.swms.local/msp
+        Policies:
+          Readers:
+            Type: Signature
+            Rule: "OR('WasteMgmtMSP.admin', 'WasteMgmtMSP.peer', 'WasteMgmtMSP.client')"
+          Writers:
+            Type: Signature
+            Rule: "OR('WasteMgmtMSP.admin', 'WasteMgmtMSP.client')"
+          Admins:
+            Type: Signature
+            Rule: "OR('WasteMgmtMSP.admin')"
+          Endorsement:
+            Type: Signature
+            Rule: "OR('WasteMgmtMSP.peer')"
+        AnchorPeers:
+          - Host: peer0.blockchain.svc.cluster.local
+            Port: 7051
+    Capabilities:
+      Channel: &ChannelCapabilities
+        V2_0: true
+      Orderer: &OrdererCapabilities
+        V2_0: true
+      Application: &ApplicationCapabilities
+        V2_5: true
+    Application: &ApplicationDefaults
+      Organizations:
+      Policies:
+        Readers:
+          Type: ImplicitMeta
+          Rule: "ANY Readers"
+        Writers:
+          Type: ImplicitMeta
+          Rule: "ANY Writers"
+        Admins:
+          Type: ImplicitMeta
+          Rule: "MAJORITY Admins"
+        LifecycleEndorsement:
+          Type: ImplicitMeta
+          Rule: "MAJORITY Endorsement"
+        Endorsement:
+          Type: ImplicitMeta
+          Rule: "MAJORITY Endorsement"
+      Capabilities:
+        <<: *ApplicationCapabilities
+    Orderer: &OrdererDefaults
+      OrdererType: etcdraft
+      Addresses:
+        - orderer.blockchain.svc.cluster.local:7050
+      EtcdRaft:
+        Consenters:
+          - Host: orderer.blockchain.svc.cluster.local
+            Port: 7050
+            ClientTLSCert: /tmp/crypto/ordererOrganizations/swms.local/orderers/orderer.swms.local/tls/server.crt
+            ServerTLSCert: /tmp/crypto/ordererOrganizations/swms.local/orderers/orderer.swms.local/tls/server.crt
+      BatchTimeout: 2s
+      BatchSize:
+        MaxMessageCount: 10
+        AbsoluteMaxBytes: 99 MB
+        PreferredMaxBytes: 512 KB
+      Organizations:
+      Policies:
+        Readers:
+          Type: ImplicitMeta
+          Rule: "ANY Readers"
+        Writers:
+          Type: ImplicitMeta
+          Rule: "ANY Writers"
+        Admins:
+          Type: ImplicitMeta
+          Rule: "MAJORITY Admins"
+        BlockValidation:
+          Type: ImplicitMeta
+          Rule: "ANY Writers"
+      Capabilities:
+        <<: *OrdererCapabilities
+    Channel: &ChannelDefaults
+      Policies:
+        Readers:
+          Type: ImplicitMeta
+          Rule: "ANY Readers"
+        Writers:
+          Type: ImplicitMeta
+          Rule: "ANY Writers"
+        Admins:
+          Type: ImplicitMeta
+          Rule: "MAJORITY Admins"
+      Capabilities:
+        <<: *ChannelCapabilities
+    Profiles:
+      WasteMgmtChannel:
+        <<: *ChannelDefaults
+        Orderer:
+          <<: *OrdererDefaults
+          Organizations:
+            - *OrdererOrg
+          Capabilities: *OrdererCapabilities
+        Application:
+          <<: *ApplicationDefaults
+          Organizations:
+            - *WasteMgmtOrg
+          Capabilities: *ApplicationCapabilities
+
+---
+# ConfigMap: setup script embedded here so the Job container can execute it
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fabric-setup-script
+  namespace: blockchain
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+data:
+  setup.sh: |
+    #!/bin/bash
+    set -euo pipefail
+
+    CRYPTO=/tmp/crypto
+    ARTIFACTS=/tmp/artifacts
+    APISERVER=https://kubernetes.default.svc
+    TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+    CACERT=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    NS=blockchain
+
+    echo "=============================================="
+    echo " Hyperledger Fabric — Network Setup"
+    echo "=============================================="
+
+    # ── 1. Generate crypto material ──────────────────────────────────
+    echo "[1/4] Generating crypto material with cryptogen..."
+    mkdir -p "$CRYPTO" "$ARTIFACTS"
+    cryptogen generate \
+      --config=/config/crypto-config.yaml \
+      --output="$CRYPTO"
+    echo "  Crypto generated."
+
+    # ── 2. Generate channel genesis block ────────────────────────────
+    echo "[2/4] Generating waste-collection-channel genesis block..."
+    FABRIC_CFG_PATH=/config configtxgen \
+      -profile WasteMgmtChannel \
+      -outputBlock "$ARTIFACTS/genesis.block" \
+      -channelID waste-collection-channel
+    echo "  Genesis block created."
+
+    # ── Helper: POST or PUT a Secret via K8s REST API ────────────────
+    apply_secret() {
+      local name="$1"
+      local payload="$2"
+      # Try POST first; if 409 (already exists), PUT to update
+      HTTP=$(curl -s -o /dev/null -w "%{http_code}" \
+        --cacert "$CACERT" \
+        -H "Authorization: Bearer $TOKEN" \
+        -H "Content-Type: application/json" \
+        -X POST \
+        "$APISERVER/api/v1/namespaces/$NS/secrets" \
+        -d "$payload")
+      if [ "$HTTP" = "409" ]; then
+        curl -s -o /dev/null \
+          --cacert "$CACERT" \
+          -H "Authorization: Bearer $TOKEN" \
+          -H "Content-Type: application/json" \
+          -X PUT \
+          "$APISERVER/api/v1/namespaces/$NS/secrets/$name" \
+          -d "$payload"
+        echo "  Secret '$name' updated."
+      else
+        echo "  Secret '$name' created (HTTP $HTTP)."
+      fi
+    }
+
+    b64f() { base64 -w 0 < "$1"; }
+
+    # ── 3. Create Kubernetes Secrets ─────────────────────────────────
+    echo "[3/4] Creating K8s Secrets..."
+
+    ORDERER_DIR="$CRYPTO/ordererOrganizations/swms.local/orderers/orderer.swms.local"
+    ORDERER_ORG_DIR="$CRYPTO/ordererOrganizations/swms.local"
+    PEER_DIR="$CRYPTO/peerOrganizations/wasteMgmt.swms.local/peers/peer0.wasteMgmt.swms.local"
+    PEER_ORG_DIR="$CRYPTO/peerOrganizations/wasteMgmt.swms.local"
+    ADMIN_DIR="$CRYPTO/peerOrganizations/wasteMgmt.swms.local/users/Admin@wasteMgmt.swms.local"
+
+    # Pack MSP directories as tar.gz for clean Secret storage
+    tar czf /tmp/orderer-msp.tar.gz -C "$ORDERER_DIR/msp" .
+    tar czf /tmp/peer-msp.tar.gz    -C "$PEER_DIR/msp" .
+    tar czf /tmp/admin-msp.tar.gz   -C "$ADMIN_DIR/msp" .
+
+    # fabric-orderer-tls
+    apply_secret "fabric-orderer-tls" "$(cat <<EOF
+    {
+      "apiVersion": "v1",
+      "kind": "Secret",
+      "metadata": {"name": "fabric-orderer-tls", "namespace": "$NS"},
+      "type": "Opaque",
+      "data": {
+        "tls.crt": "$(b64f "$ORDERER_DIR/tls/server.crt")",
+        "tls.key": "$(b64f "$ORDERER_DIR/tls/server.key")",
+        "ca.crt":  "$(b64f "$ORDERER_DIR/tls/ca.crt")"
+      }
+    }
+    EOF
+    )"
+
+    # fabric-orderer-msp
+    apply_secret "fabric-orderer-msp" "$(cat <<EOF
+    {
+      "apiVersion": "v1",
+      "kind": "Secret",
+      "metadata": {"name": "fabric-orderer-msp", "namespace": "$NS"},
+      "type": "Opaque",
+      "data": {
+        "msp.tar.gz": "$(b64f /tmp/orderer-msp.tar.gz)"
+      }
+    }
+    EOF
+    )"
+
+    # fabric-peer-tls
+    apply_secret "fabric-peer-tls" "$(cat <<EOF
+    {
+      "apiVersion": "v1",
+      "kind": "Secret",
+      "metadata": {"name": "fabric-peer-tls", "namespace": "$NS"},
+      "type": "Opaque",
+      "data": {
+        "tls.crt": "$(b64f "$PEER_DIR/tls/server.crt")",
+        "tls.key": "$(b64f "$PEER_DIR/tls/server.key")",
+        "ca.crt":  "$(b64f "$PEER_DIR/tls/ca.crt")"
+      }
+    }
+    EOF
+    )"
+
+    # fabric-peer-msp
+    apply_secret "fabric-peer-msp" "$(cat <<EOF
+    {
+      "apiVersion": "v1",
+      "kind": "Secret",
+      "metadata": {"name": "fabric-peer-msp", "namespace": "$NS"},
+      "type": "Opaque",
+      "data": {
+        "msp.tar.gz": "$(b64f /tmp/peer-msp.tar.gz)"
+      }
+    }
+    EOF
+    )"
+
+    # fabric-admin-msp (used by channel-setup and chaincode-deploy Jobs)
+    apply_secret "fabric-admin-msp" "$(cat <<EOF
+    {
+      "apiVersion": "v1",
+      "kind": "Secret",
+      "metadata": {"name": "fabric-admin-msp", "namespace": "$NS"},
+      "type": "Opaque",
+      "data": {
+        "msp.tar.gz": "$(b64f /tmp/admin-msp.tar.gz)"
+      }
+    }
+    EOF
+    )"
+
+    # fabric-admin-tls (TLS certs for admin CLI commands)
+    apply_secret "fabric-admin-tls" "$(cat <<EOF
+    {
+      "apiVersion": "v1",
+      "kind": "Secret",
+      "metadata": {"name": "fabric-admin-tls", "namespace": "$NS"},
+      "type": "Opaque",
+      "data": {
+        "ca.crt":      "$(b64f "$PEER_ORG_DIR/tlsca/tlsca.wasteMgmt.swms.local-cert.pem")",
+        "orderer-ca.crt": "$(b64f "$ORDERER_ORG_DIR/tlsca/tlsca.swms.local-cert.pem")"
+      }
+    }
+    EOF
+    )"
+
+    # fabric-root-ca (for SDK connection profile / API wrapper)
+    apply_secret "fabric-root-ca" "$(cat <<EOF
+    {
+      "apiVersion": "v1",
+      "kind": "Secret",
+      "metadata": {"name": "fabric-root-ca", "namespace": "$NS"},
+      "type": "Opaque",
+      "data": {
+        "peer-tlsca.pem":    "$(b64f "$PEER_ORG_DIR/tlsca/tlsca.wasteMgmt.swms.local-cert.pem")",
+        "orderer-tlsca.pem": "$(b64f "$ORDERER_ORG_DIR/tlsca/tlsca.swms.local-cert.pem")"
+      }
+    }
+    EOF
+    )"
+
+    # fabric-genesis
+    apply_secret "fabric-genesis" "$(cat <<EOF
+    {
+      "apiVersion": "v1",
+      "kind": "Secret",
+      "metadata": {"name": "fabric-genesis", "namespace": "$NS"},
+      "type": "Opaque",
+      "data": {
+        "genesis.block": "$(b64f "$ARTIFACTS/genesis.block")"
+      }
+    }
+    EOF
+    )"
+
+    # ── 4. Store admin identity for SDK wallet ────────────────────────
+    echo "[4/4] Storing admin identity for API wrapper SDK wallet..."
+    ADMIN_CERT=$(ls "$ADMIN_DIR/msp/signcerts/"*.pem 2>/dev/null || ls "$ADMIN_DIR/msp/signcerts/")
+    ADMIN_KEY=$(ls "$ADMIN_DIR/msp/keystore/"*_sk 2>/dev/null || ls "$ADMIN_DIR/msp/keystore/")
+
+    apply_secret "fabric-admin-identity" "$(cat <<EOF
+    {
+      "apiVersion": "v1",
+      "kind": "Secret",
+      "metadata": {"name": "fabric-admin-identity", "namespace": "$NS"},
+      "type": "Opaque",
+      "data": {
+        "cert.pem": "$(b64f "$ADMIN_CERT")",
+        "key.pem":  "$(b64f "$ADMIN_KEY")"
+      }
+    }
+    EOF
+    )"
+
+    echo ""
+    echo "=============================================="
+    echo " Setup complete! Secrets created:"
+    echo "   fabric-orderer-tls, fabric-orderer-msp"
+    echo "   fabric-peer-tls, fabric-peer-msp"
+    echo "   fabric-admin-msp, fabric-admin-tls"
+    echo "   fabric-root-ca, fabric-genesis"
+    echo "   fabric-admin-identity"
+    echo ""
+    echo " Next: deploy 02-orderer.yaml, 03-peer.yaml"
+    echo "=============================================="
+
+---
+# Setup Job — runs cryptogen + configtxgen + Secret creation
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: fabric-setup
+  namespace: blockchain
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    component: setup
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: fabric-setup
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: fabric-setup
+      containers:
+        - name: fabric-setup
+          image: hyperledger/fabric-tools:2.5
+          command: ["/bin/bash", "/scripts/setup.sh"]
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 200m
+            limits:
+              memory: 512Mi
+              cpu: 500m
+          volumeMounts:
+            - name: setup-script
+              mountPath: /scripts
+            - name: crypto-config
+              mountPath: /config/crypto-config.yaml
+              subPath: crypto-config.yaml
+            - name: configtx
+              mountPath: /config/configtx.yaml
+              subPath: configtx.yaml
+      volumes:
+        - name: setup-script
+          configMap:
+            name: fabric-setup-script
+            defaultMode: 0755
+        - name: crypto-config
+          configMap:
+            name: fabric-crypto-config
+        - name: configtx
+          configMap:
+            name: fabric-configtx
