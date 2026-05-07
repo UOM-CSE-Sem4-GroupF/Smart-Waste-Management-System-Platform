@@ -1,0 +1,1 @@
+{"type":"index-pattern","id":"microservices-logs-*","attributes":{"title":"microservices-logs-*","timeFieldName":"@timestamp","fields":"[]"},"references":[],"migrationVersion":{"index-pattern":"7.6.0"}}

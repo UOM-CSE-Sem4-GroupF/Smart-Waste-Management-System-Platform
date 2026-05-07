@@ -1,0 +1,36 @@
+{
+  "title": "Health Dashboard",
+  "uid": "health-dashboard",
+  "tags": ["health", "uptime"],
+  "panels": [
+    {
+      "title": "Service Uptime",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [{
+        "expr": "avg(up) * 100",
+        "legendFormat": "Uptime %"
+      }]
+    },
+    {
+      "title": "Pod Restart Count",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [{
+        "expr": "increase(kube_pod_container_status_restarts_total[1h])",
+        "legendFormat": "{{ pod }}"
+      }]
+    },
+    {
+      "title": "Memory Usage %",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [{
+        "expr": "container_memory_usage_bytes / container_spec_memory_limit_bytes * 100",
+        "legendFormat": "{{ pod }}"
+      }]
+    }
+  ],
+  "schemaVersion": 30,
+  "version": 1
+}
