@@ -33,8 +33,8 @@ variable "k8s_version_prefix" {
 
 variable "node_count" {
   type        = number
-  default     = 2
-  description = "Number of worker nodes. 2×s-2vcpu-4gb = ~$48/mo. Handles all SWMS services."
+  default     = 3
+  description = "Number of worker nodes. 3×s-2vcpu-4gb = ~$72/mo. 3 nodes required for rolling deployments without memory pressure."
 }
 
 variable "node_size" {

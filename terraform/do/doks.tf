@@ -14,7 +14,7 @@ data "digitalocean_kubernetes_versions" "available" {}
 locals {
   matching_versions = [
     for version in data.digitalocean_kubernetes_versions.available.valid_versions : version
-    if startswith(version.slug, var.k8s_version_prefix)
+    if startswith(version, var.k8s_version_prefix)
   ]
 
   selected_version = length(local.matching_versions) > 0 ? local.matching_versions[0] : data.digitalocean_kubernetes_versions.available.valid_versions[0]
