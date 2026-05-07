@@ -1,0 +1,5 @@
+- pipeline.id: microservices
+  path.config: "/usr/share/logstash/pipeline/logstash.conf"
+  pipeline.workers: 2
+  pipeline.batch.size: 500
+  pipeline.batch.delay: 50
