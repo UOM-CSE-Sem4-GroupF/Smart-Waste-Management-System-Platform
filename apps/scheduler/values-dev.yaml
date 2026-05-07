@@ -1,5 +1,7 @@
 # Inherited from base-service
 base-service:
+  imagePullSecrets:
+    - name: ghcr-pull-secret
   image:
     repository: ghcr.io/uom-cse-sem4-groupf/scheduler
     tag: latest
