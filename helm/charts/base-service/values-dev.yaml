@@ -1,5 +1,8 @@
 replicaCount: 1
 
+imagePullSecrets:
+  - name: ghcr-pull-secret
+
 resources:
   requests:
     cpu: 50m
