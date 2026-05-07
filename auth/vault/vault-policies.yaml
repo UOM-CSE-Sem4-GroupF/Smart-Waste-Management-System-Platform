@@ -82,6 +82,24 @@ data:
       keycloak_db_url="jdbc:postgresql://keycloak-postgresql.auth.svc.cluster.local:5432/bitnami_keycloak"
     echo "  ✅ PostgreSQL secrets stored."
 
+    # ── Seed Hyperledger Fabric secrets ──────────────────────
+    echo "[3d/6] Seeding secrets at secret/swms/hyperledger..."
+    # Placeholder values — overwritten by fabric-setup Job once crypto is generated.
+    # The blockchain API wrapper reads: admin-cert, admin-key, peer-tlscert from
+    # K8s Secrets (fabric-admin-identity, fabric-root-ca) created by 01-setup-job.yaml.
+    # These Vault entries serve as a central registry and backup reference.
+    vault kv put secret/swms/hyperledger \
+      channel_name="waste-collection-channel" \
+      chaincode_name="collection-record" \
+      chaincode_version="1.0" \
+      msp_id="WasteMgmtMSP" \
+      peer_endpoint="peer0.blockchain.svc.cluster.local:7051" \
+      orderer_endpoint="orderer.blockchain.svc.cluster.local:7050" \
+      admin_cert_path="/etc/fabric/identity/cert.pem" \
+      admin_key_path="/etc/fabric/identity/key.pem" \
+      peer_tlsca_path="/etc/fabric/tls/peer-tlsca.pem"
+    echo "  ✅ Hyperledger secrets stored."
+
     # ── Write Vault Policies ──────────────────────────────────
     echo "[4/6] Writing access policies..."
 
@@ -114,6 +132,14 @@ data:
     }
     EOF
     echo "  ✅ Policy 'keycloak-service' created."
+
+    # Hyperledger service: read-only access to Fabric connection config
+    vault policy write hyperledger-service - <<EOF
+    path "secret/data/swms/hyperledger" {
+      capabilities = ["read"]
+    }
+    EOF
+    echo "  ✅ Policy 'hyperledger-service' created."
 
     # ── Enable Kubernetes Auth Method ─────────────────────────
     echo "[5/6] Enabling Kubernetes auth method..."
@@ -151,6 +177,14 @@ data:
       token_ttl="2h"
     echo "  ✅ Role 'keycloak-service' created."
 
+    # hyperledger-service: for F4 blockchain API wrapper
+    vault write auth/kubernetes/role/hyperledger-service \
+      bound_service_account_names="default" \
+      bound_service_account_namespaces="blockchain" \
+      policies="hyperledger-service" \
+      token_ttl="2h"
+    echo "  ✅ Role 'hyperledger-service' created."
+
     echo ""
     echo "======================================================"
     echo " ✅ Vault Bootstrap Complete!"
@@ -158,14 +192,16 @@ data:
     echo " UI: http://localhost:30820 (via minikube service)"
     echo ""
     echo " Secrets seeded:"
-    echo "   secret/swms/kafka     — SASL credentials"
-    echo "   secret/swms/keycloak  — Admin credentials"
-    echo "   secret/swms/postgres  — DB passwords"
+    echo "   secret/swms/kafka        — SASL credentials"
+    echo "   secret/swms/keycloak     — Admin credentials"
+    echo "   secret/swms/postgres     — DB passwords"
+    echo "   secret/swms/hyperledger  — Fabric connection config"
     echo ""
     echo " Kubernetes auth roles:"
-    echo "   platform-admin   → auth namespace"
-    echo "   kafka-consumer   → waste-dev, waste-prod, messaging"
-    echo "   keycloak-service → waste-dev, waste-prod, auth"
+    echo "   platform-admin      → auth namespace"
+    echo "   kafka-consumer      → waste-dev, waste-prod, messaging"
+    echo "   keycloak-service    → waste-dev, waste-prod, auth"
+    echo "   hyperledger-service → blockchain namespace"
     echo "======================================================"
 
 ---
