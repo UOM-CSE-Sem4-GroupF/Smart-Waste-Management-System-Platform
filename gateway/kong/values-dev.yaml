@@ -18,7 +18,7 @@ deployment:
 
 # Ingress Controller disabled — all routing via declarative config ConfigMap
 ingressController:
-  enabled: false
+  enabled: true
 
 # Single replica for local dev
 replicaCount: 1

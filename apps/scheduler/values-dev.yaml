@@ -8,11 +8,15 @@ base-service:
   service:
     port: 3003
   livenessProbe:
+    enabled: true
     httpGet:
       port: 3003
+      path: /health
   readinessProbe:
+    enabled: true
     httpGet:
       port: 3003
+      path: /ready
 
   env:
     PORT: "3003"

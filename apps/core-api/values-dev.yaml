@@ -16,7 +16,7 @@ base-service:
     enabled: true
     httpGet:
       port: 8001
-      path: /health
+      path: /ready
 
   # Build DATABASE_URL at runtime so POSTGRES_PASSWORD is expanded from the ExternalSecret
   command: ["/bin/sh", "-c"]

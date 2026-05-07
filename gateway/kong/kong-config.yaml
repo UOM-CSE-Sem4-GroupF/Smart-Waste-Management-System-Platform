@@ -37,7 +37,7 @@ data:
       # Serves all bin state and zone summary queries
       # ---------------------------------------------------------
       - name: bin-status
-        url: http://bin-status.waste-dev.svc.cluster.local:3002
+        url: http://bin-status-base-service.waste-dev.svc.cluster.local:3002
         connect_timeout: 3000
         read_timeout: 10000
         write_timeout: 10000
@@ -99,7 +99,7 @@ data:
       # Manages the full job lifecycle state machine
       # ---------------------------------------------------------
       - name: orchestrator
-        url: http://orchestrator.waste-dev.svc.cluster.local:3001
+        url: http://orchestrator-base-service.waste-dev.svc.cluster.local:3001
         connect_timeout: 3000
         read_timeout: 30000
         write_timeout: 30000
@@ -140,7 +140,7 @@ data:
       # Handles driver/vehicle assignment and job progress tracking
       # ---------------------------------------------------------
       - name: scheduler
-        url: http://scheduler.waste-dev.svc.cluster.local:3003
+        url: http://scheduler-base-service.waste-dev.svc.cluster.local:3003
         connect_timeout: 3000
         read_timeout: 15000
         write_timeout: 15000
@@ -233,7 +233,7 @@ data:
       # Zone management, bin clusters, route plans, analytics
       # ---------------------------------------------------------
       - name: core-api
-        url: http://core-api.waste-dev.svc.cluster.local:8001
+        url: http://core-api-base-service.waste-dev.svc.cluster.local:8001
         connect_timeout: 3000
         read_timeout: 30000
         write_timeout: 10000
@@ -274,7 +274,7 @@ data:
       # Fill-time predictions, zone generation, route scoring
       # ---------------------------------------------------------
       - name: ml-service
-        url: http://ml-service.waste-dev.svc.cluster.local:8000
+        url: http://ml-service-base-service.waste-dev.svc.cluster.local:8000
         connect_timeout: 3000
         read_timeout: 30000
         write_timeout: 10000
@@ -309,7 +309,7 @@ data:
       # Optimal collection route calculation
       # ---------------------------------------------------------
       - name: route-optimizer
-        url: http://route-optimizer.waste-dev.svc.cluster.local:8083
+        url: http://route-optimizer-base-service.waste-dev.svc.cluster.local:8083
         connect_timeout: 3000
         read_timeout: 60000
         write_timeout: 30000
@@ -345,7 +345,7 @@ data:
       # Long read_timeout required for Socket.IO long-polling
       # ---------------------------------------------------------
       - name: notification
-        url: http://notification.waste-dev.svc.cluster.local:3004
+        url: http://notification-base-service.waste-dev.svc.cluster.local:3004
         connect_timeout: 3000
         read_timeout: 86400000
         write_timeout: 86400000
