@@ -309,10 +309,10 @@ func main() {
 	// Internal — called directly by F3 orchestrator via K8s DNS (no Kong JWT)
 	r.POST("/records", postRecord)
 
-	// Public — routed through Kong (Kong enforces JWT)
-	r.GET("/records/zone/:zone_id", getRecordsByZone)
-	r.GET("/records/:job_id/history", getRecordHistory)
-	r.GET("/records/:job_id", getRecord)
+	// Public — routed through Kong with strip_path: false, so full /api/v1/records/* path arrives here
+	r.GET("/api/v1/records/zone/:zone_id", getRecordsByZone)
+	r.GET("/api/v1/records/:job_id/history", getRecordHistory)
+	r.GET("/api/v1/records/:job_id", getRecord)
 
 	port := env("PORT", "8080")
 	log.Printf("blockchain-api-wrapper listening on :%s", port)

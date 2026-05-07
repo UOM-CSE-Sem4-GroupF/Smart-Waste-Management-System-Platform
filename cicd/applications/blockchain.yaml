@@ -1,0 +1,81 @@
+# Group F — Smart Waste Management System
+# Argo CD Application: Hyperledger Fabric Blockchain
+# Owner: F4 Platform Team
+#
+# Deploys the full Fabric network + chaincode + REST API wrapper to the
+# blockchain namespace. Raw manifest approach (no Helm chart).
+#
+# Source layout:
+#   blockchain/network/0*.yaml    — PVCs, RBAC, orderer, peer, channel + chaincode Jobs
+#   blockchain/api-wrapper/k8s/  — blockchain-api-wrapper Deployment + ClusterIP Service
+#
+# configtx.yaml and crypto-config.yaml in blockchain/network/ are Fabric config
+# files (not K8s manifests) and are excluded by the include: "0*.yaml" pattern.
+#
+# Sync ordering: the numbered manifest filenames (00- through 06-) ensure
+# Argo CD applies resources in dependency order within a single sync wave.
+# The Job scripts internally wait (polling loops) for upstream services to be
+# ready before proceeding, so parallel application is safe.
+#
+# Auto-sync is enabled. Manual first-run steps:
+#   1. kubectl apply -f namespaces/namespaces-dev.yaml   (creates blockchain ns)
+#   2. Argo CD triggers sync → all resources applied
+#   3. Monitor Jobs: kubectl get jobs -n blockchain -w
+#
+# Sync wave: 15 (after postgres-waste at wave 10, before app services at wave 20)
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: blockchain
+  namespace: cicd
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    component: blockchain
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+
+  sources:
+    # Fabric network: PVCs, RBAC, orderer, peer, channel-setup + chaincode lifecycle Jobs
+    # Excludes configtx.yaml and crypto-config.yaml (Fabric-only configs, not K8s manifests)
+    - repoURL: https://github.com/UOM-CSE-Sem4-GroupF/Smart-Waste-Management-System-Platform
+      targetRevision: main
+      path: blockchain/network
+      directory:
+        include: "0*.yaml"
+
+    # API wrapper: Deployment + ClusterIP Service for blockchain-api-wrapper
+    - repoURL: https://github.com/UOM-CSE-Sem4-GroupF/Smart-Waste-Management-System-Platform
+      targetRevision: main
+      path: blockchain/api-wrapper/k8s
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: blockchain
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+
+  ignoreDifferences:
+    # Completed Jobs have .status that drifts from desired spec — ignore
+    - group: batch
+      kind: Job
+      jsonPointers:
+        - /spec/selector
+        - /spec/template/metadata/labels
