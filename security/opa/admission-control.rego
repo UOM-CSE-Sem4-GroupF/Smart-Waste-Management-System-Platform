@@ -60,17 +60,22 @@ deny[msg] {
 }
 
 # =============================================================================
-# RULE 2 — Enforce mandatory labels: app and version
+# RULE 2 — Enforce mandatory labels: app.kubernetes.io/name and
+#           app.kubernetes.io/instance
 #
-# All Pods and Deployments MUST have both 'app' and 'version' labels.
+# All Pods and Deployments MUST have both standard Helm labels.
 # These labels are required for:
 #   - Istio AuthorizationPolicy selectors (matchLabels)
-#   - Istio traffic routing (VirtualService/DestinationRule)
 #   - Observability (Kiali service graph, Prometheus dashboards)
 #   - Argo CD health tracking
+#
+# NOTE: Helm's base-service chart emits app.kubernetes.io/name and
+# app.kubernetes.io/instance — NOT the short-form "app" label.
+# This policy matches what the chart actually generates so that
+# admission is never incorrectly blocked.
 # =============================================================================
 
-required_labels := {"app", "version"}
+required_labels := {"app.kubernetes.io/name", "app.kubernetes.io/instance"}
 
 deny[msg] {
   input.request.kind.kind == "Pod"
@@ -78,7 +83,7 @@ deny[msg] {
   missing := required_labels - provided
   count(missing) > 0
   msg := sprintf(
-    "DENIED — Pod '%s' is missing required labels: %v. All Pods must have 'app' and 'version' labels.",
+    "DENIED — Pod '%s' is missing required labels: %v. All Pods must have 'app.kubernetes.io/name' and 'app.kubernetes.io/instance' labels.",
     [input.request.object.metadata.name, missing]
   )
 }
@@ -89,7 +94,7 @@ deny[msg] {
   missing := required_labels - provided
   count(missing) > 0
   msg := sprintf(
-    "DENIED — Deployment '%s' is missing required labels: %v. All Deployments must have 'app' and 'version' labels.",
+    "DENIED — Deployment '%s' is missing required labels: %v. All Deployments must have 'app.kubernetes.io/name' and 'app.kubernetes.io/instance' labels.",
     [input.request.object.metadata.name, missing]
   )
 }
@@ -100,7 +105,7 @@ deny[msg] {
   missing := required_labels - provided
   count(missing) > 0
   msg := sprintf(
-    "DENIED — Deployment '%s': pod template is missing required labels: %v. Pod template must have 'app' and 'version' labels (required for Istio selectors).",
+    "DENIED — Deployment '%s': pod template is missing required labels: %v. Pod template must have 'app.kubernetes.io/name' and 'app.kubernetes.io/instance' labels.",
     [input.request.object.metadata.name, missing]
   )
 }
