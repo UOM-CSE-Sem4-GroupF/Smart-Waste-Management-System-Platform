@@ -1,0 +1,6 @@
+pytest>=8.0
+pytest-mock>=3.12
+pyyaml>=6.0
+requests>=2.31
+kafka-python>=2.0
+paho-mqtt>=1.6

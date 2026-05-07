@@ -1,0 +1,37 @@
+suite: base-service service
+templates:
+  - templates/service.yaml
+tests:
+  - it: should be a Service
+    asserts:
+      - isKind:
+          of: Service
+
+  - it: should default to ClusterIP
+    asserts:
+      - equal:
+          path: spec.type
+          value: ClusterIP
+
+  - it: should expose port 3000 by default
+    asserts:
+      - equal:
+          path: spec.ports[0].port
+          value: 3000
+
+  - it: should set targetPort equal to service port
+    asserts:
+      - equal:
+          path: spec.ports[0].targetPort
+          value: 3000
+
+  - it: should expose custom port when overridden
+    set:
+      service.port: 8080
+    asserts:
+      - equal:
+          path: spec.ports[0].port
+          value: 8080
+      - equal:
+          path: spec.ports[0].targetPort
+          value: 8080

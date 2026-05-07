@@ -1,0 +1,40 @@
+suite: core-api chart values
+templates:
+  - charts/base-service/templates/deployment.yaml
+  - charts/base-service/templates/external-secret.yaml
+values:
+  - values-dev.yaml
+tests:
+  - it: should use core-api image repository
+    template: charts/base-service/templates/deployment.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: "ghcr.io/uom-cse-sem4-groupf/core-api:.*"
+
+  - it: should expose port 8001
+    template: charts/base-service/templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 8001
+
+  - it: should render ExternalSecret for POSTGRES_PASSWORD from Vault
+    template: charts/base-service/templates/external-secret.yaml
+    asserts:
+      - isKind:
+          of: ExternalSecret
+      - contains:
+          path: spec.data
+          content:
+            secretKey: POSTGRES_PASSWORD
+            remoteRef:
+              key: swms/postgres-waste
+              property: password
+
+  - it: should reference swms/postgres-waste Vault path
+    template: charts/base-service/templates/external-secret.yaml
+    asserts:
+      - equal:
+          path: spec.secretStoreRef.name
+          value: vault-backend
