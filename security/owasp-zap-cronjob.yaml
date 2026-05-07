@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: owasp-zap-scan-api
+  namespace: monitoring
+spec:
+  schedule: "0 4 * * 0" # Run weekly on Sunday at 4 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: zap-scanner
+            # Using the official ZAP Docker image
+            image: owasp/zap2docker-stable:latest
+            args: [
+              "zap-baseline.py",
+              "-t", "https://api.swms.live", # The target URL from the instructions
+              "-r", "zap-report.html"
+              #
+              # --- ZAP Configuration Placeholder ---
+              #
+              # Add your ZAP configurations here. This could include:
+              # - Context files for authenticated scans
+              # - Scan policy overrides
+              # - URLs to ignore
+              #
+              # Example:
+              # "-c", "/zap/wrk/zap-rules.conf",
+              # "-U", "admin@swms-dev.local"
+              #
+              # You would typically mount these config files via a ConfigMap.
+              #
+            ]
+            # This container would need a way to push the report (zap-report.html)
+            # to a persistent location, like an S3 bucket or a shared volume,
+            # or a service to collect it. For now, it remains in the container.
+          restartPolicy: OnFailure
