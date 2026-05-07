@@ -17,3 +17,16 @@ base-service:
     httpGet:
       port: 8080
       path: /
+  env:
+    HOME: "/tmp"
+    PORT: "8080"
+
+  containerSecurityContext:
+    readOnlyRootFilesystem: false
+
+  extraVolumeMounts:
+    - name: tmp-dir
+      mountPath: /tmp
+  extraVolumes:
+    - name: tmp-dir
+      emptyDir: {}
