@@ -1,0 +1,190 @@
+# PURPOSE:
+#   These AuthorizationPolicies implement the principle of least-privilege for
+#   service-to-service communication within the mesh. The global-default-deny
+#   policy in mesh-security.yaml blocks all traffic by default; only the
+#   explicitly defined ALLOW rules below permit traffic to flow.
+#
+#   Rules are derived from the actual service call graph in the values-dev.yaml
+#   files for each service (ENV vars, URLs, Kafka broker references).
+#
+
+
+# =============================================================================
+# RULE 1 — Orchestrator → Scheduler (internal API)
+# Only the orchestrator service may call the scheduler's internal endpoints.
+# Source: orchestrator/values-dev.yaml (SCHEDULER_URL env var)
+# =============================================================================
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-orchestrator-to-scheduler
+  namespace: waste-dev
+spec:
+  selector:
+    matchLabels:
+      app: scheduler
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/waste-dev/sa/orchestrator"
+      to:
+        - operation:
+            methods: ["POST", "GET"]
+            paths: ["/internal/*"]
+
+# =============================================================================
+# RULE 2 — Orchestrator → Bin-Status (status checks)
+# Only the orchestrator may query the bin-status service.
+# Source: orchestrator/values-dev.yaml (BIN_STATUS_URL env var)
+# =============================================================================
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-orchestrator-to-bin-status
+  namespace: waste-dev
+spec:
+  selector:
+    matchLabels:
+      app: bin-status
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/waste-dev/sa/orchestrator"
+      to:
+        - operation:
+            methods: ["GET", "POST"]
+
+# =============================================================================
+# RULE 3 — Orchestrator → Notification (alert dispatch)
+# Only the orchestrator may call the notification service.
+# Source: orchestrator/values-dev.yaml (NOTIFICATION_URL env var)
+# =============================================================================
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-orchestrator-to-notification
+  namespace: waste-dev
+spec:
+  selector:
+    matchLabels:
+      app: notification
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/waste-dev/sa/orchestrator"
+              # bin-status also calls notification directly
+              - "cluster.local/ns/waste-dev/sa/bin-status"
+      to:
+        - operation:
+            methods: ["POST"]
+
+# =============================================================================
+# RULE 4 — Bin-Status → Core-API (data analysis queries)
+# Only bin-status may query the core-api service.
+# Source: bin-status/values-dev.yaml (DATA_ANALYSIS_URL env var)
+# =============================================================================
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-bin-status-to-core-api
+  namespace: waste-dev
+spec:
+  selector:
+    matchLabels:
+      app: core-api
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/waste-dev/sa/bin-status"
+              # orchestrator may also call core-api for analytics
+              - "cluster.local/ns/waste-dev/sa/orchestrator"
+      to:
+        - operation:
+            methods: ["GET", "POST"]
+
+# =============================================================================
+# RULE 5 — Orchestrator → ML-Service (prediction requests)
+# Only the orchestrator may invoke the ML service for predictions.
+# Source: service topology (route-optimizer/ml-service integration)
+# =============================================================================
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-orchestrator-to-ml-service
+  namespace: waste-dev
+spec:
+  selector:
+    matchLabels:
+      app: ml-service
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/waste-dev/sa/orchestrator"
+              - "cluster.local/ns/waste-dev/sa/route-optimizer"
+      to:
+        - operation:
+            methods: ["POST", "GET"]
+
+# =============================================================================
+# RULE 6 — Orchestrator → Route-Optimizer (dispatch planning)
+# Only the orchestrator may trigger the route-optimizer service.
+# Source: service-specifications (orchestrator drives dispatch pipeline)
+# =============================================================================
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-orchestrator-to-route-optimizer
+  namespace: waste-dev
+spec:
+  selector:
+    matchLabels:
+      app: route-optimizer
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/waste-dev/sa/orchestrator"
+      to:
+        - operation:
+            methods: ["POST", "GET"]
+
+# =============================================================================
+# RULE 7 — Kong Gateway → Core-API (external client traffic ingress)
+# Only the Kong API gateway (in gateway namespace) may reach core-api,
+# acting as the single controlled entry point for external requests.
+# =============================================================================
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-kong-to-core-api
+  namespace: waste-dev
+spec:
+  selector:
+    matchLabels:
+      app: core-api
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces: ["gateway"]
+      to:
+        - operation:
+            methods: ["GET", "POST", "PUT", "DELETE", "PATCH"]

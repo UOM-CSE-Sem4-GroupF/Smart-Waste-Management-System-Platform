@@ -1,7 +1,3 @@
-# Group F — Smart Waste Management System
-# Namespace-scoped mTLS Enforcement
-# Owner: Janith (Security & Mesh Architect)
-#
 # PURPOSE:
 #   Although the global PeerAuthentication in istio-system enforces STRICT mTLS
 #   mesh-wide, these namespace-scoped policies provide an explicit, auditable

@@ -1,0 +1,97 @@
+# PURPOSE:
+#   Loads the admission-control.rego policy into OPA running as a
+#   Kubernetes ValidatingAdmissionWebhook. The ConfigMap is mounted
+#   into the OPA pod; OPA hot-reloads policies from the mounted path.
+#
+# Deploy:
+#   kubectl apply -f security/opa/configmap.yaml -n opa-system
+#
+# REFERENCE: security.md — Task: OPA Admission Control
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opa-admission-policies
+  namespace: opa-system
+  labels:
+    app: opa
+    version: v1.0.0
+    managed-by: security-mesh-architect
+data:
+  # The Rego policy file — OPA reads this from the mounted path.
+  # Any update to this ConfigMap triggers a hot-reload in OPA.
+  admission-control.rego: |
+    package kubernetes.admission
+
+    import future.keywords.in
+    import future.keywords.if
+
+    # ── RULE 1: Block allowPrivilegeEscalation: true ─────────────────────────
+
+    deny[msg] {
+      input.request.kind.kind == "Pod"
+      container := input.request.object.spec.containers[_]
+      container.securityContext.allowPrivilegeEscalation == true
+      msg := sprintf(
+        "DENIED — Pod '%s': container '%s' has allowPrivilegeEscalation: true. Set it to false.",
+        [input.request.object.metadata.name, container.name]
+      )
+    }
+
+    deny[msg] {
+      input.request.kind.kind == "Pod"
+      container := input.request.object.spec.initContainers[_]
+      container.securityContext.allowPrivilegeEscalation == true
+      msg := sprintf(
+        "DENIED — Pod '%s': initContainer '%s' has allowPrivilegeEscalation: true. Set it to false.",
+        [input.request.object.metadata.name, container.name]
+      )
+    }
+
+    deny[msg] {
+      input.request.kind.kind == "Deployment"
+      container := input.request.object.spec.template.spec.containers[_]
+      container.securityContext.allowPrivilegeEscalation == true
+      msg := sprintf(
+        "DENIED — Deployment '%s': container '%s' has allowPrivilegeEscalation: true. Set it to false.",
+        [input.request.object.metadata.name, container.name]
+      )
+    }
+
+    # ── RULE 2: Enforce mandatory labels (app, version) ───────────────────────
+
+    required_labels := {"app", "version"}
+
+    deny[msg] {
+      input.request.kind.kind == "Pod"
+      provided := {label | input.request.object.metadata.labels[label]}
+      missing := required_labels - provided
+      count(missing) > 0
+      msg := sprintf(
+        "DENIED — Pod '%s' is missing required labels: %v. All Pods must have 'app' and 'version' labels.",
+        [input.request.object.metadata.name, missing]
+      )
+    }
+
+    deny[msg] {
+      input.request.kind.kind == "Deployment"
+      provided := {label | input.request.object.metadata.labels[label]}
+      missing := required_labels - provided
+      count(missing) > 0
+      msg := sprintf(
+        "DENIED — Deployment '%s' is missing required labels: %v. All Deployments must have 'app' and 'version' labels.",
+        [input.request.object.metadata.name, missing]
+      )
+    }
+
+    deny[msg] {
+      input.request.kind.kind == "Deployment"
+      provided := {label | input.request.object.spec.template.metadata.labels[label]}
+      missing := required_labels - provided
+      count(missing) > 0
+      msg := sprintf(
+        "DENIED — Deployment '%s': pod template is missing required labels: %v. Pod template must have 'app' and 'version' labels.",
+        [input.request.object.metadata.name, missing]
+      )
+    }
