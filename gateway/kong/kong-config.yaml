@@ -52,6 +52,11 @@ data:
               - PUT
               - PATCH
             plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -78,6 +83,11 @@ data:
             methods:
               - GET
             plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -93,6 +103,41 @@ data:
                 config:
                   minute: 60
                   policy: local
+
+          - name: clusters-api
+            paths:
+              - /api/v1/clusters
+            strip_path: false
+            methods:
+              - GET
+            plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+                  key_claim_name: kid
+              - name: cors
+                config:
+                  origins:
+                    - "*"
+                  methods:
+                    - GET
+                    - OPTIONS
+                  headers:
+                    - Authorization
+                    - Content-Type
+                  max_age: 3600
+              - name: rate-limiting
+                config:
+                  minute: 60
+                  policy: local
+
+          - name: bin-status-health
+            paths:
+              - /health/bin-status
+            strip_path: true
+            methods:
+              - GET
 
       # ---------------------------------------------------------
       # F3 — Collection Workflow Orchestrator
@@ -115,6 +160,11 @@ data:
               - PATCH
               - DELETE
             plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -153,6 +203,11 @@ data:
               - GET
               - POST
             plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -180,6 +235,11 @@ data:
               - PUT
               - PATCH
             plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -209,6 +269,11 @@ data:
               - PUT
               - PATCH
             plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -249,6 +314,11 @@ data:
               - PATCH
               - DELETE
             plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -287,6 +357,11 @@ data:
               - GET
               - POST
             plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -366,6 +441,11 @@ data:
               - GET
               - POST
             plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -416,6 +496,24 @@ data:
                 config:
                   minute: 60
                   policy: local
+
+      # ---------------------------------------------------------
+      # SECURITY: Block all /internal/* routes
+      # Internal service-to-service calls use K8s DNS directly.
+      # Any request reaching Kong for /internal/* is rejected.
+      # ---------------------------------------------------------
+      - name: internal-block
+        url: http://127.0.0.1:1
+        routes:
+          - name: block-internal
+            paths:
+              - /internal
+            strip_path: false
+            plugins:
+              - name: request-termination
+                config:
+                  status_code: 403
+                  message: "Internal routes are not accessible via the API gateway"
 
     # =========================================================
     # GLOBAL PLUGINS

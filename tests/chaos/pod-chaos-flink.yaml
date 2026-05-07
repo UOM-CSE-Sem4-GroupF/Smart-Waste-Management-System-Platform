@@ -1,0 +1,85 @@
+# Chaos Mesh — Pod Chaos Experiments: Flink / Notification / Postgres
+# Goal: Prove streaming and persistence layers recover from pod loss.
+#
+# Apply: kubectl apply -f tests/chaos/pod-chaos-flink.yaml -n waste-dev
+# Watch: kubectl get podchaos -n waste-dev
+# Dashboard: http://localhost:2333 (kubectl port-forward svc/chaos-dashboard 2333:2333 -n chaos-mesh)
+#
+# Run one experiment at a time. Each is independently named so they can be
+# applied/deleted without affecting each other.
+
+---
+# EXPERIMENT 1 — Kill one flink-telemetry pod every 5 minutes
+# Expected: Flink job manager detects task manager loss and reschedules
+# the telemetry processing task within 60s; Kafka consumer group rebalances.
+# Pass criteria: waste.bin.telemetry consumer lag recovers within 90s of kill.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: flink-telemetry-pod-kill
+  namespace: waste-dev
+  labels:
+    app: chaos-testing
+    experiment: pod-kill
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    namespaces:
+      - waste-dev
+    labelSelectors:
+      app.kubernetes.io/name: flink-telemetry
+  scheduler:
+    cron: "@every 5m"
+
+---
+# EXPERIMENT 2 — Kill one notification pod every 3 minutes
+# Expected: In-flight notifications are re-queued via Kafka retry topic;
+# no alert is silently dropped. Kubernetes restarts the pod within ~30s.
+# Pass criteria: notification delivery rate returns to baseline within 60s.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: notification-pod-kill
+  namespace: waste-dev
+  labels:
+    app: chaos-testing
+    experiment: pod-kill
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    namespaces:
+      - waste-dev
+    labelSelectors:
+      app.kubernetes.io/name: notification
+  scheduler:
+    cron: "@every 3m"
+
+---
+# EXPERIMENT 3 — Kill the postgres StatefulSet pod every 10 minutes
+# Expected: StatefulSet controller immediately re-creates the pod; the PVC
+# is reattached and Postgres recovers with no data loss. Services that
+# depend on the DB must handle transient connection errors gracefully.
+# Pass criteria: no rows lost in waste_management DB; reconnect within 30s.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: postgres-waste-pod-kill
+  namespace: waste-dev
+  labels:
+    app: chaos-testing
+    experiment: pod-kill
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    namespaces:
+      - waste-dev
+    labelSelectors:
+      app.kubernetes.io/instance: postgres-waste
+    pods:
+      waste-dev:
+        - postgres-waste-postgresql-0
+  scheduler:
+    cron: "@every 10m"

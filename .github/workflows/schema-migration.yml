@@ -1,0 +1,62 @@
+# Group F — Smart Waste Management System
+# Workflow: Schema Migration
+# Owner: F4 Platform Team
+#
+# Runs the Prisma/SQL migration Job against the waste-dev cluster whenever
+# database schema files change on main. The Job (postgres-db-init) is
+# idempotent — it applies migrations that have not yet been applied.
+#
+# Required secrets:
+#   KUBE_CONFIG  — base64-encoded kubeconfig with cluster-admin on waste-dev
+
+name: Schema Migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'databases/postgres-waste/**'
+
+concurrency:
+  group: schema-migration-${{ github.ref }}
+  cancel-in-progress: false   # never cancel a running migration
+
+jobs:
+  migrate:
+    name: Run Postgres DB Init Job
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+          kubectl version --client
+
+      - name: Delete previous Job if it exists
+        run: |
+          kubectl delete job postgres-db-init -n waste-dev --ignore-not-found=true
+
+      - name: Apply DB init Job
+        run: |
+          kubectl apply -f databases/postgres-waste/db-init-job.yaml -n waste-dev
+
+      - name: Wait for Job completion
+        run: |
+          kubectl wait \
+            --for=condition=complete \
+            job/postgres-db-init \
+            -n waste-dev \
+            --timeout=120s
+
+      - name: Print Job logs
+        if: always()
+        run: |
+          kubectl logs \
+            -n waste-dev \
+            -l job-name=postgres-db-init \
+            --tail=200

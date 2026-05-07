@@ -1,0 +1,60 @@
+# Production overrides for notification (Node.js, port 3004).
+base-service:
+  imagePullSecrets:
+    - name: ghcr-pull-secret
+
+  image:
+    repository: ghcr.io/uom-cse-sem4-groupf/notification
+    tag: latest
+    pullPolicy: Always
+
+  replicaCount: 2
+
+  service:
+    port: 3004
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 1000m
+      memory: 1024Mi
+
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 70
+
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+  livenessProbe:
+    enabled: true
+    httpGet:
+      port: 3004
+      path: /health
+
+  readinessProbe:
+    enabled: true
+    httpGet:
+      port: 3004
+      path: /ready
+
+  env:
+    PORT: "3004"
+    NODE_ENV: "production"
+    KAFKA_BROKER: "kafka.messaging.svc.cluster.local:9092"
+
+  externalSecret:
+    enabled: true
+    vaultPath: swms/kafka
+    secretStoreName: vault-backend
+    secretStoreKind: ClusterSecretStore
+    data:
+      - secretKey: KAFKA_USER
+        remoteRef: { key: swms/kafka, property: sasl_username }
+      - secretKey: KAFKA_PASS
+        remoteRef: { key: swms/kafka, property: sasl_password }

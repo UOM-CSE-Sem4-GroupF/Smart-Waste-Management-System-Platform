@@ -179,13 +179,45 @@ EOF
     path "secret/data/swms/*" { capabilities = ["read"] }
 EOF
 
+    # Per-service policies — least-privilege: each service reads only what it needs
+    vault policy write bin-status-service - <<EOF
+    path "secret/data/swms/kafka" { capabilities = ["read"] }
+EOF
+
+    vault policy write notification-service - <<EOF
+    path "secret/data/swms/kafka" { capabilities = ["read"] }
+EOF
+
+    vault policy write scheduler-service - <<EOF
+    path "secret/data/swms/kafka" { capabilities = ["read"] }
+EOF
+
+    vault policy write workflow-orchestrator - <<EOF
+    path "secret/data/swms/kafka"       { capabilities = ["read"] }
+    path "secret/data/swms/hyperledger" { capabilities = ["read"] }
+EOF
+
+    vault policy write fastapi-ml-service - <<EOF
+    path "secret/data/swms/postgres-waste" { capabilities = ["read"] }
+    path "secret/data/swms/influxdb"       { capabilities = ["read"] }
+EOF
+
+    vault policy write flink-processor - <<EOF
+    path "secret/data/swms/kafka"          { capabilities = ["read"] }
+    path "secret/data/swms/influxdb"       { capabilities = ["read"] }
+    path "secret/data/swms/postgres-waste" { capabilities = ["read"] }
+EOF
+
+    vault policy write ci-pipeline - <<EOF
+    path "secret/data/swms/*"      { capabilities = ["read"] }
+    path "secret/metadata/swms/*"  { capabilities = ["list","read"] }
+EOF
+
     # Hyperledger service: read-only access to Fabric connection config
     vault policy write hyperledger-service - <<EOF
-    path "secret/data/swms/hyperledger" {
-      capabilities = ["read"]
-    }
-    EOF
-    echo "  ✅ Policy 'hyperledger-service' created."
+    path "secret/data/swms/hyperledger" { capabilities = ["read"] }
+EOF
+    echo "  ✅ Per-service policies created."
 
     echo "  Policies written."
 
@@ -215,13 +247,49 @@ EOF
       bound_service_account_namespaces="eso" \
       policies="eso-service" token_ttl="2h"
 
-    # hyperledger-service: for F4 blockchain API wrapper
     vault write auth/kubernetes/role/hyperledger-service \
       bound_service_account_names="default" \
       bound_service_account_namespaces="blockchain" \
       policies="hyperledger-service" \
       token_ttl="2h"
-    echo "  ✅ Role 'hyperledger-service' created."
+
+    # Per-service Kubernetes auth roles (one ServiceAccount per service)
+    vault write auth/kubernetes/role/bin-status-service \
+      bound_service_account_names="bin-status" \
+      bound_service_account_namespaces="waste-dev,waste-prod" \
+      policies="bin-status-service" token_ttl="1h"
+
+    vault write auth/kubernetes/role/notification-service \
+      bound_service_account_names="notification" \
+      bound_service_account_namespaces="waste-dev,waste-prod" \
+      policies="notification-service" token_ttl="1h"
+
+    vault write auth/kubernetes/role/scheduler-service \
+      bound_service_account_names="scheduler" \
+      bound_service_account_namespaces="waste-dev,waste-prod" \
+      policies="scheduler-service" token_ttl="1h"
+
+    vault write auth/kubernetes/role/workflow-orchestrator \
+      bound_service_account_names="orchestrator" \
+      bound_service_account_namespaces="waste-dev,waste-prod" \
+      policies="workflow-orchestrator" token_ttl="1h"
+
+    vault write auth/kubernetes/role/fastapi-ml-service \
+      bound_service_account_names="ml-service" \
+      bound_service_account_namespaces="waste-dev,waste-prod" \
+      policies="fastapi-ml-service" token_ttl="1h"
+
+    vault write auth/kubernetes/role/flink-processor \
+      bound_service_account_names="flink-telemetry" \
+      bound_service_account_namespaces="waste-dev,waste-prod" \
+      policies="flink-processor" token_ttl="1h"
+
+    vault write auth/kubernetes/role/ci-pipeline \
+      bound_service_account_names="github-actions" \
+      bound_service_account_namespaces="cicd" \
+      policies="ci-pipeline" token_ttl="30m"
+
+    echo "  ✅ Per-service Kubernetes auth roles created."
 
     echo ""
     echo "======================================================"

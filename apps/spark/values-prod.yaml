@@ -1,0 +1,47 @@
+# Production overrides for spark (port 8080).
+# HPA is disabled — Spark manages its own executor scaling internally.
+# Probes are kept disabled to match dev behaviour; enable once a health
+# endpoint is added to the Spark driver image.
+base-service:
+  imagePullSecrets:
+    - name: ghcr-pull-secret
+
+  image:
+    repository: ghcr.io/uom-cse-sem4-groupf/spark
+    tag: latest
+    pullPolicy: Always
+
+  replicaCount: 2
+
+  service:
+    port: 8080
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 4000m
+      memory: 4Gi
+
+  hpa:
+    enabled: false
+
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+  livenessProbe:
+    enabled: false
+    httpGet:
+      port: 8080
+      path: /
+
+  readinessProbe:
+    enabled: false
+    httpGet:
+      port: 8080
+      path: /
+
+  env:
+    APP_ENV: "production"

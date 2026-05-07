@@ -1,0 +1,58 @@
+# Group F — Smart Waste Management System
+# Argo CD Application: Chaos Mesh Operator
+# Owner: F4 Platform Team
+#
+# Deploys the Chaos Mesh operator and its CRDs into the chaos-mesh namespace.
+# The dashboard is exposed in non-secure mode for local/DOKS dev clusters.
+#
+# After install, apply chaos experiments:
+#   kubectl apply -f tests/chaos/pod-chaos.yaml -n waste-dev
+#   kubectl apply -f tests/chaos/pod-chaos-flink.yaml -n waste-dev
+#   kubectl apply -f tests/chaos/stress-cpu.yaml -n waste-dev
+#
+# Dashboard access (port-forward):
+#   kubectl port-forward svc/chaos-dashboard 2333:2333 -n chaos-mesh
+#
+# Chart: chaos-mesh/chaos-mesh
+# Namespace: chaos-mesh
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: chaos-mesh
+  namespace: cicd
+  labels:
+    project: group-f-swms
+    managed-by: f4-platform
+    component: testing
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+
+  source:
+    repoURL: https://charts.chaos-mesh.org
+    chart: chaos-mesh
+    targetRevision: "2.7.0"
+    helm:
+      releaseName: chaos-mesh
+      values: |
+        chaosDaemon:
+          runtime: containerd
+          socketPath: /run/containerd/containerd.sock
+        dashboard:
+          securityMode: false
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: chaos-mesh
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
