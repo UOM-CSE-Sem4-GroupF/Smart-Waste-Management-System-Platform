@@ -1,0 +1,43 @@
+# Flink Pipeline 3: Sensor Offline
+# Script: job_sensor_offline.py
+image:
+  repository: ghcr.io/uom-cse-sem4-groupf/flink-processor
+  tag: latest
+
+command: ["python"]
+args: ["job_sensor_offline.py", "--mode", "pyflink-kafka"]
+
+livenessProbe: { enabled: false }
+readinessProbe: { enabled: false }
+
+resources:
+  requests: { cpu: "500m", memory: "1Gi" }
+  limits: { cpu: "1000m", memory: "2Gi" }
+
+env:
+  APP_ENV: dev
+  KAFKA_BOOTSTRAP_SERVERS: kafka.messaging.svc.cluster.local:9092
+  KAFKA_INPUT_TOPIC: waste.bin.telemetry
+  POSTGRES_HOST: postgres-waste-postgresql.waste-dev.svc.cluster.local
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: waste_management
+  POSTGRES_USER: waste_admin
+  POSTGRES_SCHEMA: f2
+  INFLUX_URL: http://influxdb.waste-dev.svc.cluster.local:8086
+  INFLUX_ORG: waste-org
+  INFLUX_ENABLED: "true"
+
+externalSecret:
+  enabled: true
+  vaultPath: secret/swms/kafka
+  secretStoreName: vault-backend
+  secretStoreKind: ClusterSecretStore
+  data:
+    - secretKey: KAFKA_PASSWORD
+      remoteRef: { key: secret/swms/kafka, property: sasl_password }
+    - secretKey: KAFKA_USERNAME
+      remoteRef: { key: secret/swms/kafka, property: sasl_username }
+    - secretKey: POSTGRES_PASSWORD
+      remoteRef: { key: secret/swms/postgres-waste, property: password }
+    - secretKey: INFLUX_TOKEN
+      remoteRef: { key: secret/swms/influxdb, property: token }

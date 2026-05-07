@@ -1,0 +1,9 @@
+apiVersion: v2
+name: flink-telemetry
+description: Flink telemetry stream processor — waste.bin.telemetry → waste.bin.processed
+type: application
+version: 1.0.0
+dependencies:
+  - name: base-service
+    version: 1.0.0
+    repository: "file://../../helm/charts/base-service"

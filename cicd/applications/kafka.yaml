@@ -34,11 +34,20 @@ spec:
         releaseName: kafka
         valueFiles:
           - $values/messaging/kafka/values-dev.yaml
+          - $values/messaging/kafka/values-doks.yaml
 
     # Values source — this repo provides the values file via $values alias
     - repoURL: https://github.com/UOM-CSE-Sem4-GroupF/Smart-Waste-Management-System-Platform
       targetRevision: main
       ref: values
+
+    # PostSync hook — reseeds SCRAM credentials after every sync so KRaft
+    # metadata stays in sync with the current kafka-user-passwords secret
+    - repoURL: https://github.com/UOM-CSE-Sem4-GroupF/Smart-Waste-Management-System-Platform
+      targetRevision: main
+      path: messaging/kafka
+      directory:
+        include: "scram-init.yaml"
 
   destination:
     server: https://kubernetes.default.svc
@@ -54,14 +63,28 @@ spec:
       - RespectIgnoreDifferences=true
 
   ignoreDifferences:
-    # StatefulSet volumeClaimTemplates are immutable after creation
     - group: apps
       kind: StatefulSet
       jsonPointers:
         - /spec/volumeClaimTemplates
-    # Kafka generates a default config that differs from Argo CD's view
+        - /spec/template/metadata/annotations
+        - /spec/persistentVolumeClaimRetentionPolicy
     - group: ""
       kind: ConfigMap
       name: kafka-configuration
       jsonPointers:
         - /data
+    # kafka-kraft secret contains cluster ID generated at bootstrap — Helm
+    # regenerates a different value on each render but the running cluster
+    # must keep its original ID, so ignore all diffs on this secret.
+    - group: ""
+      kind: Secret
+      name: kafka-kraft
+      jsonPointers:
+        - /data
+    # LoadBalancer IP is assigned by DO — not part of Helm desired state.
+    - group: ""
+      kind: Service
+      name: kafka-broker-0-external
+      jsonPointers:
+        - /status

@@ -1,0 +1,57 @@
+# Inherited from base-service
+base-service:
+  imagePullSecrets:
+    - name: ghcr-pull-secret
+  image:
+    repository: ghcr.io/uom-cse-sem4-groupf/flink-processor
+    tag: latest
+  service:
+    port: 8080
+  livenessProbe:
+    enabled: false
+  readinessProbe:
+    enabled: false
+
+  podSecurityContext:
+    runAsNonRoot: false
+    runAsUser: 0
+    fsGroup: 0
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    runAsNonRoot: false
+    runAsUser: 0
+    capabilities:
+      drop:
+        - ALL
+
+  command: ["python"]
+  args: ["job_sensor_offline.py", "--mode", "pyflink-kafka"]
+
+  env:
+    APP_ENV: "production"
+    LOG_LEVEL: "INFO"
+    KAFKA_BOOTSTRAP_SERVERS: "kafka.messaging.svc.cluster.local:9092"
+    KAFKA_SECURITY_PROTOCOL: "SASL_PLAINTEXT"
+    KAFKA_SASL_MECHANISM: "SCRAM-SHA-256"
+    KAFKA_INPUT_TOPIC: "waste.bin.telemetry"
+    KAFKA_OUTPUT_TOPIC: "waste.bin.processed"
+    OFFLINE_THRESHOLD_MINUTES: "30"
+    TICK_INTERVAL_SECONDS: "60"
+    POSTGRES_HOST: "postgres-waste-postgresql.waste-dev.svc.cluster.local"
+    POSTGRES_PORT: "5432"
+    POSTGRES_DB: "waste_management"
+    POSTGRES_USER: "waste_admin"
+
+  externalSecret:
+    enabled: true
+    vaultPath: swms/kafka
+    secretStoreName: vault-backend
+    secretStoreKind: ClusterSecretStore
+    data:
+      - secretKey: KAFKA_USERNAME
+        remoteRef: { key: swms/kafka, property: sasl_username }
+      - secretKey: KAFKA_PASSWORD
+        remoteRef: { key: swms/kafka, property: sasl_password }
+      - secretKey: POSTGRES_PASSWORD
+        remoteRef: { key: swms/postgres-waste, property: password }

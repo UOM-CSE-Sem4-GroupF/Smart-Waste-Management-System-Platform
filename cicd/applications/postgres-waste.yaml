@@ -25,6 +25,11 @@ spec:
       targetRevision: main
       ref: values
 
+    # DB init ConfigMaps + PostSync Job (schema + seed)
+    - repoURL: https://github.com/UOM-CSE-Sem4-GroupF/Smart-Waste-Management-System-Platform
+      targetRevision: main
+      path: databases/postgres-waste
+
   destination:
     server: https://kubernetes.default.svc
     namespace: waste-dev
@@ -36,3 +41,17 @@ spec:
     syncOptions:
       - CreateNamespace=false
       - ServerSideApply=true
+
+  ignoreDifferences:
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /spec/volumeClaimTemplates
+        - /spec/template/metadata/annotations
+        - /spec/persistentVolumeClaimRetentionPolicy
+    # Bitnami chart auto-generates postgres superuser password on each render
+    - group: ""
+      kind: Secret
+      name: postgres-waste-postgresql
+      jsonPointers:
+        - /data

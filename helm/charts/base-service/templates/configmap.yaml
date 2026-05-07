@@ -3,6 +3,10 @@ kind: ConfigMap
 metadata:
   name: {{ include "base-service.fullname" . }}-config
 data:
-  # Put non-sensitive configuration here. Secrets should be injected via Vault.
   APP_ENV: "dev"
   LOG_LEVEL: "info"
+  {{- if .Values.env }}
+  {{- range $key, $val := .Values.env }}
+  {{ $key }}: {{ $val | quote }}
+  {{- end }}
+  {{- end }}

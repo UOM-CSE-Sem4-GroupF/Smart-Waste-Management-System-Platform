@@ -1,0 +1,36 @@
+# Inherited from base-service
+base-service:
+  imagePullSecrets:
+    - name: ghcr-pull-secret
+  image:
+    repository: ghcr.io/uom-cse-sem4-groupf/bin-status
+    tag: latest
+  service:
+    port: 3002
+  livenessProbe:
+    enabled: true
+    httpGet:
+      port: 3002
+      path: /health
+  readinessProbe:
+    enabled: true
+    httpGet:
+      port: 3002
+      path: /ready
+
+  env:
+    PORT: "3002"
+    KAFKA_BROKER: "kafka.messaging.svc.cluster.local:9092"
+    DATA_ANALYSIS_URL: "http://core-api-base-service.waste-dev.svc.cluster.local:8001"
+    NOTIFICATION_URL: "http://notification-base-service.waste-dev.svc.cluster.local:3004"
+
+  externalSecret:
+    enabled: true
+    vaultPath: swms/kafka
+    secretStoreName: vault-backend
+    secretStoreKind: ClusterSecretStore
+    data:
+      - secretKey: KAFKA_USER
+        remoteRef: { key: swms/kafka, property: sasl_username }
+      - secretKey: KAFKA_PASS
+        remoteRef: { key: swms/kafka, property: sasl_password }

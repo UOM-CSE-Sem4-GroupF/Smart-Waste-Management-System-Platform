@@ -5,9 +5,9 @@
 # Applied via: kubectl apply -f gateway/kong/kong-config.yaml -n gateway
 #
 # ROUTE DESIGN:
-#   All /api/v1/* routes are public-facing (through Kong, require JWT)
+#   All /api/v1/* routes are public-facing (through Kong, require CORS + rate-limiting)
 #   All /internal/* routes are BLOCKED at Kong — services call each other directly via K8s DNS
-#   /ws routes WebSocket connections to notification-service
+#   /socket.io routes WebSocket/long-poll connections to notification-service
 #
 # Owner: F4 Platform Team
 
@@ -36,8 +36,8 @@ data:
       # F3 — Bin Status Service
       # Serves all bin state and zone summary queries
       # ---------------------------------------------------------
-      - name: bin-status-service
-        url: http://bin-status-service.waste-dev.svc.cluster.local:3001
+      - name: bin-status
+        url: http://bin-status-base-service.waste-dev.svc.cluster.local:3002
         connect_timeout: 3000
         read_timeout: 10000
         write_timeout: 10000
@@ -52,10 +52,20 @@ data:
               - PUT
               - PATCH
             plugins:
-              - name: jwt
+              - name: cors
                 config:
-                  claims_to_verify:
-                    - exp
+                  origins:
+                    - "*"
+                  methods:
+                    - GET
+                    - POST
+                    - PUT
+                    - PATCH
+                    - OPTIONS
+                  headers:
+                    - Authorization
+                    - Content-Type
+                  max_age: 3600
               - name: rate-limiting
                 config:
                   minute: 100
@@ -68,10 +78,17 @@ data:
             methods:
               - GET
             plugins:
-              - name: jwt
+              - name: cors
                 config:
-                  claims_to_verify:
-                    - exp
+                  origins:
+                    - "*"
+                  methods:
+                    - GET
+                    - OPTIONS
+                  headers:
+                    - Authorization
+                    - Content-Type
+                  max_age: 3600
               - name: rate-limiting
                 config:
                   minute: 60
@@ -81,8 +98,8 @@ data:
       # F3 — Collection Workflow Orchestrator
       # Manages the full job lifecycle state machine
       # ---------------------------------------------------------
-      - name: workflow-orchestrator
-        url: http://workflow-orchestrator.waste-dev.svc.cluster.local:3002
+      - name: orchestrator
+        url: http://orchestrator-base-service.waste-dev.svc.cluster.local:3001
         connect_timeout: 3000
         read_timeout: 30000
         write_timeout: 30000
@@ -96,11 +113,23 @@ data:
               - POST
               - PUT
               - PATCH
+              - DELETE
             plugins:
-              - name: jwt
+              - name: cors
                 config:
-                  claims_to_verify:
-                    - exp
+                  origins:
+                    - "*"
+                  methods:
+                    - GET
+                    - POST
+                    - PUT
+                    - PATCH
+                    - DELETE
+                    - OPTIONS
+                  headers:
+                    - Authorization
+                    - Content-Type
+                  max_age: 3600
               - name: rate-limiting
                 config:
                   minute: 60
@@ -110,8 +139,8 @@ data:
       # F3 — Scheduler Service
       # Handles driver/vehicle assignment and job progress tracking
       # ---------------------------------------------------------
-      - name: scheduler-service
-        url: http://scheduler-service.waste-dev.svc.cluster.local:3003
+      - name: scheduler
+        url: http://scheduler-base-service.waste-dev.svc.cluster.local:3003
         connect_timeout: 3000
         read_timeout: 15000
         write_timeout: 15000
@@ -124,10 +153,18 @@ data:
               - GET
               - POST
             plugins:
-              - name: jwt
+              - name: cors
                 config:
-                  claims_to_verify:
-                    - exp
+                  origins:
+                    - "*"
+                  methods:
+                    - GET
+                    - POST
+                    - OPTIONS
+                  headers:
+                    - Authorization
+                    - Content-Type
+                  max_age: 3600
               - name: rate-limiting
                 config:
                   minute: 60
@@ -139,11 +176,94 @@ data:
             strip_path: false
             methods:
               - GET
+              - POST
+              - PUT
+              - PATCH
             plugins:
-              - name: jwt
+              - name: cors
                 config:
-                  claims_to_verify:
-                    - exp
+                  origins:
+                    - "*"
+                  methods:
+                    - GET
+                    - POST
+                    - PUT
+                    - PATCH
+                    - OPTIONS
+                  headers:
+                    - Authorization
+                    - Content-Type
+                  max_age: 3600
+              - name: rate-limiting
+                config:
+                  minute: 60
+                  policy: local
+
+          - name: drivers-api
+            paths:
+              - /api/v1/drivers
+            strip_path: false
+            methods:
+              - GET
+              - POST
+              - PUT
+              - PATCH
+            plugins:
+              - name: cors
+                config:
+                  origins:
+                    - "*"
+                  methods:
+                    - GET
+                    - POST
+                    - PUT
+                    - PATCH
+                    - OPTIONS
+                  headers:
+                    - Authorization
+                    - Content-Type
+                  max_age: 3600
+              - name: rate-limiting
+                config:
+                  minute: 60
+                  policy: local
+
+      # ---------------------------------------------------------
+      # F2 — Core API Service
+      # Zone management, bin clusters, route plans, analytics
+      # ---------------------------------------------------------
+      - name: core-api
+        url: http://core-api-base-service.waste-dev.svc.cluster.local:8001
+        connect_timeout: 3000
+        read_timeout: 30000
+        write_timeout: 10000
+        routes:
+          - name: data-analysis-api
+            paths:
+              - /data-analysis
+            strip_path: true
+            methods:
+              - GET
+              - POST
+              - PUT
+              - PATCH
+              - DELETE
+            plugins:
+              - name: cors
+                config:
+                  origins:
+                    - "*"
+                  methods:
+                    - GET
+                    - POST
+                    - PUT
+                    - PATCH
+                    - DELETE
+                    - OPTIONS
+                  headers:
+                    - Authorization
+                    - Content-Type
+                  max_age: 3600
               - name: rate-limiting
                 config:
                   minute: 60
@@ -153,8 +273,8 @@ data:
       # F2 — FastAPI ML Service
       # Fill-time predictions, zone generation, route scoring
       # ---------------------------------------------------------
-      - name: fastapi-ml-service
-        url: http://fastapi-ml-service.waste-dev.svc.cluster.local:8000
+      - name: ml-service
+        url: http://ml-service-base-service.waste-dev.svc.cluster.local:8000
         connect_timeout: 3000
         read_timeout: 30000
         write_timeout: 10000
@@ -167,35 +287,90 @@ data:
               - GET
               - POST
             plugins:
-              - name: jwt
+              - name: cors
                 config:
-                  claims_to_verify:
-                    - exp
+                  origins:
+                    - "*"
+                  methods:
+                    - GET
+                    - POST
+                    - OPTIONS
+                  headers:
+                    - Authorization
+                    - Content-Type
+                  max_age: 3600
               - name: rate-limiting
                 config:
                   minute: 30
                   policy: local
 
       # ---------------------------------------------------------
-      # F3 — Notification Service (WebSocket)
-      # Serves Socket.IO for live dashboard updates
+      # F2 — Route Optimizer Service
+      # Optimal collection route calculation
       # ---------------------------------------------------------
-      - name: notification-service
-        url: http://notification-service.waste-dev.svc.cluster.local:3004
+      - name: route-optimizer
+        url: http://route-optimizer-base-service.waste-dev.svc.cluster.local:8083
         connect_timeout: 3000
         read_timeout: 60000
-        write_timeout: 60000
+        write_timeout: 30000
+        routes:
+          - name: route-optimizer-api
+            paths:
+              - /api/v1/routes
+            strip_path: false
+            methods:
+              - GET
+              - POST
+            plugins:
+              - name: cors
+                config:
+                  origins:
+                    - "*"
+                  methods:
+                    - GET
+                    - POST
+                    - OPTIONS
+                  headers:
+                    - Authorization
+                    - Content-Type
+                  max_age: 3600
+              - name: rate-limiting
+                config:
+                  minute: 30
+                  policy: local
+
+      # ---------------------------------------------------------
+      # F3 — Notification Service (WebSocket / Socket.IO)
+      # Serves Socket.IO for live dashboard updates
+      # Long read_timeout required for Socket.IO long-polling
+      # ---------------------------------------------------------
+      - name: notification
+        url: http://notification-base-service.waste-dev.svc.cluster.local:3004
+        connect_timeout: 3000
+        read_timeout: 86400000
+        write_timeout: 86400000
         routes:
           - name: websocket-api
             paths:
-              - /ws
+              - /socket.io
             strip_path: false
-            # WebSocket upgrade — no JWT enforcement at gateway level
             # Auth is handled inside the Socket.IO handshake
             plugins:
+              - name: cors
+                config:
+                  origins:
+                    - "*"
+                  methods:
+                    - GET
+                    - POST
+                    - OPTIONS
+                  headers:
+                    - Authorization
+                    - Content-Type
+                  max_age: 3600
               - name: rate-limiting
                 config:
-                  minute: 10
+                  minute: 60
                   policy: local
 
     # =========================================================

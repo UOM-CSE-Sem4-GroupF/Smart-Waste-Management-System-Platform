@@ -67,8 +67,18 @@ spec:
       - ServerSideApply=true
 
   ignoreDifferences:
-    # Kong generates webhook CA bundles dynamically
     - group: admissionregistration.k8s.io
       kind: ValidatingWebhookConfiguration
       jsonPointers:
         - /webhooks/0/clientConfig/caBundle
+    # Kong regenerates self-signed webhook TLS certs on each Helm render
+    - group: ""
+      kind: Secret
+      name: kong-kong-validation-webhook-ca-keypair
+      jsonPointers:
+        - /data
+    - group: ""
+      kind: Secret
+      name: kong-kong-validation-webhook-keypair
+      jsonPointers:
+        - /data

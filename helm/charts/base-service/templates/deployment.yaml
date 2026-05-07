@@ -19,6 +19,11 @@ spec:
     spec:
       serviceAccountName: {{ include "base-service.serviceAccountName" . }}
 
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }}
+      {{- end }}
+
       # ── Pod-level security ─────────────────────────────────────────────────
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
@@ -27,6 +32,15 @@ spec:
         - name: {{ include "base-service.name" . }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+
+          {{- if .Values.command }}
+          command:
+            {{- toYaml .Values.command | nindent 12 }}
+          {{- end }}
+          {{- if .Values.args }}
+          args:
+            {{- toYaml .Values.args | nindent 12 }}
+          {{- end }}
 
           # ── Container-level security ───────────────────────────────────────
           securityContext:

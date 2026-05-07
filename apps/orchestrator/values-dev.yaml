@@ -1,0 +1,43 @@
+# Inherited from base-service
+base-service:
+  imagePullSecrets:
+    - name: ghcr-pull-secret
+  image:
+    repository: ghcr.io/uom-cse-sem4-groupf/orchestrator
+    tag: latest
+  service:
+    port: 3001
+  livenessProbe:
+    enabled: true
+    httpGet:
+      port: 3001
+      path: /health
+  readinessProbe:
+    enabled: true
+    httpGet:
+      port: 3001
+      path: /ready
+    initialDelaySeconds: 15
+
+  command: ["/bin/sh", "-c"]
+  args: ["export DATABASE_URL=postgresql://waste_admin:${POSTGRES_PASSWORD}@postgres-waste-postgresql.waste-dev.svc.cluster.local:5432/waste_management?schema=f3 && node dist/index.js"]
+
+  env:
+    PORT: "3001"
+    KAFKA_BROKER: "kafka.messaging.svc.cluster.local:9092"
+    BIN_STATUS_URL: "http://bin-status-base-service.waste-dev.svc.cluster.local:3002"
+    SCHEDULER_URL: "http://scheduler-base-service.waste-dev.svc.cluster.local:3003"
+    NOTIFICATION_URL: "http://notification-base-service.waste-dev.svc.cluster.local:3004"
+
+  externalSecret:
+    enabled: true
+    vaultPath: swms/kafka
+    secretStoreName: vault-backend
+    secretStoreKind: ClusterSecretStore
+    data:
+      - secretKey: KAFKA_USER
+        remoteRef: { key: swms/kafka, property: sasl_username }
+      - secretKey: KAFKA_PASS
+        remoteRef: { key: swms/kafka, property: sasl_password }
+      - secretKey: POSTGRES_PASSWORD
+        remoteRef: { key: swms/postgres-waste, property: password }

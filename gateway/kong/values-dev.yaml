@@ -3,11 +3,12 @@
 # Deployed into: gateway namespace
 # Mode: DB-less (declarative config via ConfigMap)
 
-# DB-less mode natively supported by the chart
+# DB-less mode with declarative config from ConfigMap
 env:
   database: "off"
+  kic: "off"
+  declarative_config: /kong_dbless_config/kong.yaml
 
-# Tell the chart to automatically mount and configure the ConfigMap
 dblessConfig:
   configMap: kong-declarative-config
 
@@ -15,12 +16,9 @@ deployment:
   kong:
     enabled: true
 
-# Enable the Ingress Controller to watch K8s Ingress resources
+# Ingress Controller disabled — all routing via declarative config ConfigMap
 ingressController:
   enabled: true
-  installCRDs: false
-  env:
-    kong_admin_tls_skip_verify: "true"
 
 # Single replica for local dev
 replicaCount: 1

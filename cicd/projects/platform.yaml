@@ -26,6 +26,8 @@ spec:
     - https://helm.releases.hashicorp.com
     - https://repos.emqx.io/charts
     - https://argoproj.github.io/argo-helm
+    - https://helm.influxdata.com/
+    - https://prometheus-community.github.io/helm-charts
 
   destinations:
     - server: https://kubernetes.default.svc
@@ -46,6 +48,8 @@ spec:
       namespace: waste-prod
     - server: https://kubernetes.default.svc
       namespace: eso
+    - server: https://kubernetes.default.svc
+      namespace: kube-system
 
   clusterResourceWhitelist:
     - group: '*'

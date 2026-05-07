@@ -1,0 +1,9 @@
+apiVersion: v2
+name: flink-deviation
+description: Flink vehicle deviation processor — waste.vehicle.location → waste.vehicle.deviation
+type: application
+version: 1.0.0
+dependencies:
+  - name: base-service
+    version: 1.0.0
+    repository: "file://../../helm/charts/base-service"

@@ -1,0 +1,98 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: postgres-db-init
+  namespace: waste-dev
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: postgres-db-init
+    spec:
+      restartPolicy: OnFailure
+      # No special security context needed — psql runs fine as postgres user
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:15
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h postgres-waste-postgresql.waste-dev.svc.cluster.local -p 5432 -U waste_admin; do
+                echo "Waiting for PostgreSQL..."
+                sleep 3
+              done
+              echo "PostgreSQL is ready"
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-db-init-secrets
+                  key: POSTGRES_PASSWORD
+      containers:
+        - name: db-init
+          image: postgres:15
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              export PGPASSWORD="${POSTGRES_PASSWORD}"
+              PG="psql -h postgres-waste-postgresql.waste-dev.svc.cluster.local -p 5432 -U waste_admin -d waste_management"
+
+              echo "=== Applying schema ==="
+              $PG -f /sql/schema.sql
+              echo "=== Schema applied ==="
+
+              echo "=== Applying seed data ==="
+              $PG -f /sql/seed.sql
+              echo "=== Seed applied ==="
+
+              echo "=== Database initialization complete ==="
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-db-init-secrets
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: schema-sql
+              mountPath: /sql/schema.sql
+              subPath: schema.sql
+            - name: seed-sql
+              mountPath: /sql/seed.sql
+              subPath: seed.sql
+      volumes:
+        - name: schema-sql
+          configMap:
+            name: postgres-schema-v3
+        - name: seed-sql
+          configMap:
+            name: postgres-seed-v3
+---
+# ExternalSecret to fetch postgres password for the init job
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: postgres-db-init-secrets
+  namespace: waste-dev
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  refreshInterval: "1h"
+  secretStoreRef:
+    name: vault-backend
+    kind: ClusterSecretStore
+  target:
+    name: postgres-db-init-secrets
+    creationPolicy: Owner
+  data:
+    - secretKey: POSTGRES_PASSWORD
+      remoteRef:
+        key: swms/postgres-waste
+        property: password

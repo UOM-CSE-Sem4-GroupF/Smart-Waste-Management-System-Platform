@@ -1,12 +1,15 @@
 replicaCount: 1
 
+imagePullSecrets:
+  - name: ghcr-pull-secret
+
 resources:
   requests:
-    cpu: 50m
-    memory: 64Mi
+    cpu: 20m
+    memory: 32Mi
   limits:
     cpu: 250m
-    memory: 256Mi
+    memory: 512Mi
 
 persistence:
   enabled: false

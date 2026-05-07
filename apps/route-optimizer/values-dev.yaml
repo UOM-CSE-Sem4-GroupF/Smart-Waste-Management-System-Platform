@@ -1,0 +1,36 @@
+# Inherited from base-service
+base-service:
+  imagePullSecrets:
+    - name: ghcr-pull-secret
+  image:
+    repository: ghcr.io/uom-cse-sem4-groupf/route-optimizer
+    tag: latest
+  service:
+    port: 8083
+  livenessProbe:
+    enabled: true
+    httpGet:
+      port: 8083
+      path: /health
+  readinessProbe:
+    enabled: true
+    httpGet:
+      port: 8083
+      path: /ready
+
+  env:
+    APP_ENV: "production"
+    LOG_LEVEL: "INFO"
+    DB_HOST: "postgres-waste-postgresql.waste-dev.svc.cluster.local"
+    DB_PORT: "5432"
+    DB_NAME: "waste_management"
+    DB_USER: "waste_admin"
+
+  externalSecret:
+    enabled: true
+    vaultPath: swms/postgres-waste
+    secretStoreName: vault-backend
+    secretStoreKind: ClusterSecretStore
+    data:
+      - secretKey: DB_PASSWORD
+        remoteRef: { key: swms/postgres-waste, property: password }

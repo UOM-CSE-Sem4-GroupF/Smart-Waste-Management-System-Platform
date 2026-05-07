@@ -64,9 +64,15 @@ spec:
     syncOptions:
       - CreateNamespace=false
       - ServerSideApply=true
+      - RespectIgnoreDifferences=true
 
   ignoreDifferences:
     - group: apps
       kind: StatefulSet
       jsonPointers:
         - /spec/volumeClaimTemplates
+        - /spec/template/metadata/annotations
+        - /spec/persistentVolumeClaimRetentionPolicy
+        - /spec/selector
+        - /spec/serviceName
+        - /spec/podManagementPolicy
