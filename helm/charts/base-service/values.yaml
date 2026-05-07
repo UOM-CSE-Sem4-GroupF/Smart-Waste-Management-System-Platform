@@ -21,8 +21,8 @@ service:
 # Always set both requests AND limits. Requests = guaranteed, Limits = ceiling.
 resources:
   requests:
-    cpu: 100m
-    memory: 128Mi
+    cpu: 20m
+    memory: 32Mi
   limits:
     cpu: 500m
     memory: 512Mi
