@@ -1,0 +1,122 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash-config
+  namespace: monitoring
+data:
+  logstash.conf: |
+    input {
+      beats { port => 5044 }
+      tcp { port => 5000; codec => json }
+    }
+    filter {
+      if [message] {
+        json {
+          source => "message"
+          target => "parsed"
+          tag_on_failure => ["_jsonparsefailure"]
+        }
+      }
+      mutate {
+        rename => {
+          "[parsed][level]" => "log_level"
+          "[parsed][service]" => "service_name"
+          "[parsed][traceId]" => "trace_id"
+        }
+      }
+      if [kubernetes][namespace_name] {
+        mutate { add_field => { "environment" => "%{[kubernetes][namespace_name]}" } }
+      }
+      date {
+        match => ["[parsed][timestamp]", "ISO8601"]
+        target => "@timestamp"
+        tag_on_failure => ["_dateparsefailure"]
+      }
+    }
+    output {
+      elasticsearch {
+        hosts => ["http://elasticsearch.monitoring.svc.cluster.local:9200"]
+        index => "microservices-logs-%{+YYYY.MM.dd}"
+        ilm_enabled => true
+        ilm_rollover_alias => "swms-logs"
+        ilm_pattern => "000001"
+        ilm_policy => "swms-30day-retention"
+      }
+    }
+  pipelines.yml: |
+    - pipeline.id: microservices
+      path.config: "/usr/share/logstash/pipeline/logstash.conf"
+      pipeline.workers: 2
+      pipeline.batch.size: 500
+      pipeline.batch.delay: 50
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logstash
+  namespace: monitoring
+  labels:
+    app: logstash
+    project: group-f-swms
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: logstash
+  template:
+    metadata:
+      labels:
+        app: logstash
+    spec:
+      containers:
+        - name: logstash
+          image: docker.elastic.co/logstash/logstash:8.13.0
+          ports:
+            - containerPort: 5044
+              name: beats
+            - containerPort: 5000
+              name: tcp-json
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 9600
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            failureThreshold: 5
+          volumeMounts:
+            - name: config
+              mountPath: /usr/share/logstash/pipeline/logstash.conf
+              subPath: logstash.conf
+            - name: config
+              mountPath: /usr/share/logstash/config/pipelines.yml
+              subPath: pipelines.yml
+      volumes:
+        - name: config
+          configMap:
+            name: logstash-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: logstash
+  namespace: monitoring
+  labels:
+    app: logstash
+    project: group-f-swms
+spec:
+  selector:
+    app: logstash
+  ports:
+    - name: beats
+      port: 5044
+      targetPort: 5044
+    - name: tcp-json
+      port: 5000
+      targetPort: 5000
