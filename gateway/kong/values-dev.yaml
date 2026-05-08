@@ -15,20 +15,18 @@ dblessConfig:
 deployment:
   kong:
     enabled: true
+  extraVolumes:
+    - name: kong-dbless-config
+      configMap:
+        name: kong-declarative-config
+  extraVolumeMounts:
+    - name: kong-dbless-config
+      mountPath: /kong_dbless_config
+      readOnly: true
 
 # Ingress Controller disabled — all routing via declarative config ConfigMap
 ingressController:
   enabled: false
-
-# Manually mount the declarative config volume
-extraVolumes:
-  - name: kong-dbless-config
-    configMap:
-      name: kong-declarative-config
-extraVolumeMounts:
-  - name: kong-dbless-config
-    mountPath: /kong_dbless_config
-    readOnly: true
 
 # Single replica for local dev
 replicaCount: 1
