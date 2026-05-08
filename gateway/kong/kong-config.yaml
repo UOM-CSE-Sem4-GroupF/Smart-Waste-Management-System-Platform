@@ -521,7 +521,7 @@ data:
           - name: keycloak-api
             paths:
               - /auth
-            strip_path: true
+            strip_path: false
             plugins:
               - name: cors
                 config:
