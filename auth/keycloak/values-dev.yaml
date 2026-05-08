@@ -56,30 +56,23 @@ postgresql:
         memory: 256Mi
 
 # ─── Dev Mode ────────────────────────────────────────────────
-# Run in development mode (start-dev) — no strict hostname or HTTPS checks
+# Run in development mode (start-dev) — no strict hostname or HTTPS checks.
+# Dev mode already trusts reverse proxy headers, so KC_PROXY is not required.
 production: false
 
-# ─── Reverse Proxy Config ────────────────────────────────────
-# Keycloak sits behind Kong. KC_PROXY=edge tells it to trust
-# X-Forwarded-For / X-Forwarded-Proto from Kong.
-# httpRelativePath makes Keycloak serve at /auth/... so Kong's
-# strip_path: false route works without path rewriting.
+# ─── Reverse Proxy Path ──────────────────────────────────────
+# Keycloak serves at /auth/... so Kong's strip_path: false route
+# forwards /auth/realms/... correctly without path rewriting.
 httpRelativePath: "/auth"
 
-extraEnvVars:
-  - name: KC_PROXY
-    value: edge
-
 # ─── Networking ──────────────────────────────────────────────
-# Expose via NodePort so Minikube can reach it
+# NodePort for local Minikube; values-doks.yaml overrides this to ClusterIP on DOKS.
 service:
-  type: LoadBalancer
+  type: NodePort
   ports:
     http: 80
   nodePorts:
     http: "30180"
-  annotations:
-    service.beta.kubernetes.io/do-loadbalancer-name: "swms-keycloak"
 
 # ─── Resource Limits ─────────────────────────────────────────
 # Keycloak is JVM-based — needs a bit more RAM
