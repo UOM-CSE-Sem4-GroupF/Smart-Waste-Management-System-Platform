@@ -3,26 +3,20 @@
 # Deployed into: gateway namespace
 # Mode: DB-less (declarative config via ConfigMap)
 
-# DB-less mode with declarative config from ConfigMap
+# DB-less mode — the chart auto-sets KONG_DECLARATIVE_CONFIG
+# when dblessConfig.configMap is provided
 env:
   database: "off"
   kic: "off"
-  declarative_config: /kong_dbless_config/kong.yaml
 
+# Point to our ConfigMap. The chart will mount it at /kong_dbless/kong.yml
+# and set KONG_DECLARATIVE_CONFIG automatically.
 dblessConfig:
   configMap: kong-declarative-config
 
 deployment:
   kong:
     enabled: true
-  extraVolumes:
-    - name: kong-dbless-config
-      configMap:
-        name: kong-declarative-config
-  extraVolumeMounts:
-    - name: kong-dbless-config
-      mountPath: /kong_dbless_config
-      readOnly: true
 
 # Ingress Controller disabled — all routing via declarative config ConfigMap
 ingressController:
