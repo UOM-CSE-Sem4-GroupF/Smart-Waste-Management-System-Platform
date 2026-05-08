@@ -142,6 +142,7 @@ data:
               - PUT
               - PATCH
               - DELETE
+            plugins:
               - name: cors
                 config:
                   origins:
@@ -179,6 +180,7 @@ data:
             methods:
               - GET
               - POST
+            plugins:
               - name: cors
                 config:
                   origins:
@@ -205,6 +207,7 @@ data:
               - POST
               - PUT
               - PATCH
+            plugins:
               - name: cors
                 config:
                   origins:
@@ -233,6 +236,7 @@ data:
               - POST
               - PUT
               - PATCH
+            plugins:
               - name: cors
                 config:
                   origins:
@@ -272,6 +276,7 @@ data:
               - PUT
               - PATCH
               - DELETE
+            plugins:
               - name: cors
                 config:
                   origins:
@@ -309,6 +314,7 @@ data:
             methods:
               - GET
               - POST
+            plugins:
               - name: cors
                 config:
                   origins:
@@ -356,6 +362,7 @@ data:
             strip_path: false
             methods:
               - GET
+            plugins:
               - name: rate-limiting
                 config:
                   minute: 30
@@ -378,6 +385,7 @@ data:
             methods:
               - GET
               - POST
+            plugins:
               - name: cors
                 config:
                   origins:
@@ -415,6 +423,7 @@ data:
             # for defence-in-depth. Clients must pass the Keycloak access token
             # as ?token=<jwt> in the Socket.IO connection URL because the browser
             # WebSocket API cannot set custom headers on the upgrade request.
+            plugins:
               - name: cors
                 config:
                   origins:
