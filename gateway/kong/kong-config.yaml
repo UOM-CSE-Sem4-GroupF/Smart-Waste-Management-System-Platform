@@ -20,7 +20,7 @@ metadata:
     project: group-f-swms
     managed-by: f4-platform
 data:
-  kong.yaml: |
+  kong.yml: |
     _format_version: "3.0"
     _transform: true
 
