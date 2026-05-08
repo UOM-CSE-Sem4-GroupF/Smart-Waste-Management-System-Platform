@@ -37,6 +37,7 @@ base-service:
   command: ["/bin/bash", "-c"]
   args:
     - |
+      mkdir -p /opt/flink/log
       python job.py --mode pyflink-kafka &
       python job_zone.py --mode pyflink-kafka &
       python job_deviation.py --mode pyflink-kafka &
