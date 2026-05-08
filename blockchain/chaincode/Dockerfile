@@ -12,7 +12,7 @@ FROM golang:1.21-alpine AS builder
 WORKDIR /build
 
 # Cache dependencies separately from source
-COPY go.mod go.sum ./
+COPY go.mod go.su[m] ./
 RUN go mod download
 
 COPY collection-record.go .

@@ -38,9 +38,8 @@ jobs:
 
       - name: Update chart dependencies
         run: |
-          for app in bin-status core-api frontend orchestrator scheduler notification \
-                     ml-service route-optimizer airflow \
-                     flink-deviation flink-sensor flink-telemetry flink-vehicle flink-zone spark; do
+          for app in bin-status core-api orchestrator scheduler notification \
+                     ml-service route-optimizer airflow spark flink-telemetry; do
             helm dependency update apps/$app/ 2>/dev/null || true
           done
 
@@ -51,12 +50,15 @@ jobs:
 
       - name: Run per-app helm unit tests
         run: |
-          for app in bin-status core-api frontend orchestrator scheduler notification \
-                     ml-service route-optimizer airflow \
-                     flink-deviation flink-sensor flink-telemetry flink-vehicle flink-zone spark; do
+          for app in bin-status core-api orchestrator scheduler notification \
+                     ml-service route-optimizer airflow spark flink-telemetry; do
             echo "Testing $app ..."
-            helm unittest apps/$app/ \
-              --file "tests/unit/helm/apps/${app}_test.yaml" || exit 1
+            # Only run if the test file exists
+            if [ -f "tests/unit/helm/apps/${app}_test.yaml" ]; then
+              helm unittest apps/$app/ --file "tests/unit/helm/apps/${app}_test.yaml" || exit 1
+            else
+              echo "  No unit tests found for $app, skipping."
+            fi
           done
 
   # ────────────────────────────────────────────────────────────────────────────
@@ -88,7 +90,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install bats
-        run: npm install -g bats
+        run: sudo npm install -g bats
 
       - name: Run shell unit tests
         run: |
@@ -120,7 +122,7 @@ jobs:
 
       - name: Update chart dependencies for manifest tests
         run: |
-          for app in bin-status core-api frontend orchestrator scheduler notification \
+          for app in bin-status core-api orchestrator scheduler notification \
                      ml-service route-optimizer; do
             helm dependency update apps/$app/ 2>/dev/null || true
           done

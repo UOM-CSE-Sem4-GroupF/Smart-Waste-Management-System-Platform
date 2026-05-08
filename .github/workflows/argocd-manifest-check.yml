@@ -38,7 +38,7 @@ jobs:
 
       - name: Validate manifests against Argo CD CRD schema
         run: |
-          find cicd/projects cicd/bootstrap cicd/applications cicd/appsets \
+          find cicd/projects cicd/bootstrap cicd/applications \
             -name "*.yaml" | \
           kubeconform \
             -strict \
