@@ -98,11 +98,7 @@ spec:
               value: "/var/hyperledger/peer/tls/tls.key"
             - name: CORE_PEER_TLS_ROOTCERT_FILE
               value: "/var/hyperledger/peer/tls/ca.crt"
-            # Docker socket for legacy chaincode launcher (fallback if CCAAS unused)
-            - name: CORE_VM_ENDPOINT
-              value: "unix:///host/var/run/docker.sock"
-            - name: CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE
-              value: "bridge"
+            # CCAAS mode — peer dials out to chaincode server, no Docker needed
             # LevelDB state database (CouchDB not needed for dev)
             - name: CORE_LEDGER_STATE_STATEDATABASE
               value: "leveldb"
@@ -137,11 +133,11 @@ spec:
               mountPath: /var/hyperledger/peer/tls
               readOnly: true
             - name: peer-data
+              mountPath: /var/hyperledger/peer/msp
+              subPath: msp
+            - name: peer-data
               mountPath: /var/hyperledger/production
               subPath: production
-            # Docker socket — allows peer to launch chaincode containers on host Docker
-            - name: docker-sock
-              mountPath: /host/var/run/docker.sock
 
       volumes:
         - name: peer-tls-secret
@@ -153,10 +149,7 @@ spec:
         - name: peer-data
           persistentVolumeClaim:
             claimName: peer-data-pvc
-        - name: docker-sock
-          hostPath:
-            path: /var/run/docker.sock
-            type: Socket
+
 
 ---
 # Headless service for peer gRPC + gossip

@@ -31,6 +31,8 @@ spec:
       labels:
         app: blockchain-api-wrapper
     spec:
+      imagePullSecrets:
+        - name: ghcr-pull-secret
       initContainers:
         # Extract admin MSP key + cert from tar.gz into flat files the app can read
         - name: setup-identity
@@ -58,8 +60,8 @@ spec:
 
       containers:
         - name: api-wrapper
-          image: blockchain-api-wrapper:1.0
-          imagePullPolicy: IfNotPresent
+          image: ghcr.io/uom-cse-sem4-groupf/blockchain-api-wrapper:1.0
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
               name: http

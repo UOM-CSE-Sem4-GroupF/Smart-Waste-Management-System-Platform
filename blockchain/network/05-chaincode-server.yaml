@@ -37,12 +37,12 @@ spec:
         app: collection-record-cc
         component: chaincode
     spec:
+      imagePullSecrets:
+        - name: ghcr-pull-secret
       containers:
         - name: chaincode
-          # Build from blockchain/chaincode/Dockerfile and push to your registry.
-          # For local Minikube dev: eval $(minikube docker-env) && docker build -t collection-record-cc:1.0 blockchain/chaincode/
-          image: collection-record-cc:1.0
-          imagePullPolicy: IfNotPresent
+          image: ghcr.io/uom-cse-sem4-groupf/collection-record-cc:1.0
+          imagePullPolicy: Always
           ports:
             - containerPort: 7052
               name: chaincode-grpc

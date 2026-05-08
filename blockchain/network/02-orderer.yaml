@@ -139,6 +139,9 @@ spec:
               mountPath: /var/hyperledger/orderer/tls
               readOnly: true
             - name: orderer-data
+              mountPath: /var/hyperledger/orderer/msp
+              subPath: msp
+            - name: orderer-data
               mountPath: /var/hyperledger/orderer/ledger
               subPath: ledger
 

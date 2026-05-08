@@ -1,0 +1,62 @@
+# Group F — Smart Waste Management System
+# Blockchain Components Build & Push
+# Owner: F4 Platform Team
+
+name: Blockchain Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'blockchain/chaincode/**'
+      - 'blockchain/api-wrapper/**'
+  workflow_dispatch: # Allow manual trigger
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-chaincode:
+    name: Build Chaincode
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Chaincode
+        uses: docker/build-push-action@v5
+        with:
+          context: blockchain/chaincode
+          push: true
+          tags: |
+            ghcr.io/uom-cse-sem4-groupf/collection-record-cc:1.0
+            ghcr.io/uom-cse-sem4-groupf/collection-record-cc:latest
+
+  build-api-wrapper:
+    name: Build API Wrapper
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push API Wrapper
+        uses: docker/build-push-action@v5
+        with:
+          context: blockchain/api-wrapper
+          push: true
+          tags: |
+            ghcr.io/uom-cse-sem4-groupf/blockchain-api-wrapper:1.0
+            ghcr.io/uom-cse-sem4-groupf/blockchain-api-wrapper:latest
