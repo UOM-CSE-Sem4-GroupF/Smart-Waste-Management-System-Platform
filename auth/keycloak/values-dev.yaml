@@ -59,6 +59,17 @@ postgresql:
 # Run in development mode (start-dev) — no strict hostname or HTTPS checks
 production: false
 
+# ─── Reverse Proxy Config ────────────────────────────────────
+# Keycloak sits behind Kong. KC_PROXY=edge tells it to trust
+# X-Forwarded-For / X-Forwarded-Proto from Kong.
+# httpRelativePath makes Keycloak serve at /auth/... so Kong's
+# strip_path: false route works without path rewriting.
+httpRelativePath: "/auth"
+
+extraEnvVars:
+  - name: KC_PROXY
+    value: edge
+
 # ─── Networking ──────────────────────────────────────────────
 # Expose via NodePort so Minikube can reach it
 service:
