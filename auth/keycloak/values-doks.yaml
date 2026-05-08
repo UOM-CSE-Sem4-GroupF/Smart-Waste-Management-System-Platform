@@ -10,11 +10,14 @@
 #   2. Service: ClusterIP (not exposed publicly; accessed via Kong in production)
 #   3. PostgreSQL storage: uses DOKS do-block-storage instead of AWS gp3
 
-# Keep Keycloak cluster-internal — expose via Kong route or kubectl port-forward
 service:
-  type: ClusterIP
+  type: LoadBalancer
   ports:
     http: 80
+  annotations:
+    service.beta.kubernetes.io/do-loadbalancer-name: "swms-keycloak"
+    service.beta.kubernetes.io/do-loadbalancer-protocol: "http"
+    service.beta.kubernetes.io/do-loadbalancer-size-slug: "lb-small"
 
 postgresql:
   primary:
