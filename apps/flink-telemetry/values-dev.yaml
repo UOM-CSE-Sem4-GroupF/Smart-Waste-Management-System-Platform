@@ -47,6 +47,7 @@ base-service:
   env:
     APP_ENV: "production"
     LOG_LEVEL: "INFO"
+    HOME: "/tmp"
     # Kafka
     KAFKA_BOOTSTRAP_SERVERS: "kafka.messaging.svc.cluster.local:9092"
     KAFKA_SECURITY_PROTOCOL: "SASL_PLAINTEXT"
