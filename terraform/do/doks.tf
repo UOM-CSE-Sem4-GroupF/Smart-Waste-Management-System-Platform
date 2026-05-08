@@ -32,8 +32,9 @@ resource "digitalocean_kubernetes_cluster" "swms" {
   node_pool {
     name       = "swms-worker-pool"
     size       = var.node_size
-    node_count = var.node_count
-    auto_scale = false
+    auto_scale = true
+    min_nodes  = 3
+    max_nodes  = 6
 
     labels = {
       project = "group-f-swms"

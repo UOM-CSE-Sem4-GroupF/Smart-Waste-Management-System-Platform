@@ -33,8 +33,8 @@ variable "k8s_version_prefix" {
 
 variable "node_count" {
   type        = number
-  default     = 3
-  description = "Number of worker nodes. 3×s-2vcpu-4gb = ~$72/mo. 3 nodes required for rolling deployments without memory pressure."
+  default     = 4
+  description = "Number of worker nodes. 4×s-2vcpu-4gb = ~$96/mo. 4 nodes required to handle the full microservice stack including Airflow and Flink without scheduling conflicts."
 }
 
 variable "node_size" {
