@@ -1,27 +1,27 @@
 # Keycloak — Helm Value Overrides for DOKS
-# Layered on top of values-dev.yaml:
-#   helm upgrade --install keycloak oci://registry-1.docker.io/bitnamicharts/keycloak \
-#     -n auth \
-#     -f ./auth/keycloak/values-dev.yaml \
-#     -f ./auth/keycloak/values-doks.yaml
+# Layered on top of values-dev.yaml by the Argo CD Application.
 #
-# Key changes:
-#   1. Image registry: public.ecr.aws → docker.io (ECR occasionally throttles non-AWS pulls)
-#   2. Service: ClusterIP (not exposed publicly; accessed via Kong in production)
-#   3. Proxy: edge (Keycloak is behind Kong gateway)
-#   4. Hostname: 139.59.219.173 (The public IP of the Kong LoadBalancer)
-#   5. Relative Path: /auth/ (Trailing slash prevents broken readiness probe construction)
+# Key changes vs dev:
+#   1. Service: ClusterIP — Keycloak is internal-only, accessed via Kong at /auth
+#   2. KC_HOSTNAME_URL — public URL clients see for issuer + redirect URIs
+#   3. PostgreSQL storage: uses DOKS do-block-storage
 
-production: true
-proxy: edge
-httpRelativePath: /auth/
-hostname: 139.59.219.173
-
+# Keycloak is internal-only on DOKS — all traffic goes through Kong at /auth
 service:
   type: ClusterIP
   ports:
     http: 80
 
+# Tell Keycloak its public-facing base URL (Kong's external IP).
+# Controls the issuer claim in JWTs and redirect URIs sent to browser clients.
+# KC_PROXY=edge is already set in values-dev.yaml but repeated here for clarity.
+extraEnvVars:
+  - name: KC_HOSTNAME_URL
+    value: "http://139.59.219.173/auth"
+  - name: KC_HOSTNAME_STRICT
+    value: "false"
+  - name: KC_PROXY
+    value: edge
 
 postgresql:
   primary:
