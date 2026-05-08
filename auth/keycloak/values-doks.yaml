@@ -18,13 +18,10 @@ httpRelativePath: /auth/
 hostname: 139.59.219.173
 
 service:
-  type: LoadBalancer
+  type: ClusterIP
   ports:
     http: 80
-  annotations:
-    service.beta.kubernetes.io/do-loadbalancer-name: "swms-keycloak"
-    service.beta.kubernetes.io/do-loadbalancer-protocol: "http"
-    service.beta.kubernetes.io/do-loadbalancer-size-slug: "lb-small"
+
 
 postgresql:
   primary:
