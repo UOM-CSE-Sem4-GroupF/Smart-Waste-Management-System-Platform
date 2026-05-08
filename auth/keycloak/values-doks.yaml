@@ -20,6 +20,8 @@ extraEnvVars:
     value: "http://139.59.219.173/auth/"
   - name: KC_HOSTNAME_STRICT
     value: "false"
+  - name: KC_PROXY
+    value: edge
 
 postgresql:
   primary:
