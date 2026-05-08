@@ -7,6 +7,8 @@ base-service:
     tag: latest
   service:
     port: 8080
+  command: ["airflow", "webserver"]
+
   env:
     AIRFLOW__CORE__LOAD_EXAMPLES: "False"
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "sqlite:////tmp/airflow.db"
