@@ -57,6 +57,7 @@ spec:
     syncOptions:
       - CreateNamespace=false
       - ServerSideApply=true
+      - RespectIgnoreDifferences=true
 
   ignoreDifferences:
     # Vault mutates its own service account annotations
@@ -65,3 +66,8 @@ spec:
       name: vault
       jsonPointers:
         - /metadata/annotations
+    # StatefulSet spec fields that are immutable
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /spec/volumeClaimTemplates

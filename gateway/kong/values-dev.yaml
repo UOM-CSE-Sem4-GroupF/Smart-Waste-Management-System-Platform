@@ -14,6 +14,11 @@ env:
 dblessConfig:
   configMap: kong-declarative-config
 
+# Explicit Kong proxy image
+image:
+  repository: kong
+  tag: "3.9"
+
 deployment:
   kong:
     enabled: true
