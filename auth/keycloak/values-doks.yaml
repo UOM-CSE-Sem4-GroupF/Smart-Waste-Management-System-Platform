@@ -17,7 +17,7 @@ service:
 # which browsers cannot reach.
 extraEnvVars:
   - name: KC_HOSTNAME_URL
-    value: "http://139.59.219.173/auth"
+    value: "http://139.59.219.173/auth/"
   - name: KC_HOSTNAME_STRICT
     value: "false"
 
