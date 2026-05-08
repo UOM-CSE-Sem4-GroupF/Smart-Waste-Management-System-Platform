@@ -9,4 +9,4 @@ spec:
       targetPort: {{ .Values.service.port }}
       protocol: TCP
   selector:
-    app: {{ include "base-service.name" . }}
+    {{- include "base-service.selectorLabels" . | nindent 4 }}
