@@ -368,3 +368,27 @@ spec:
         - operation:
             methods: ["GET"]
             paths: ["/metrics"]
+
+# =============================================================================
+# RULE 16 — Kong Gateway → Keycloak
+# Only the Kong API gateway (in gateway namespace) may reach Keycloak,
+# allowing centralized authentication via the /auth route.
+# =============================================================================
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-kong-to-keycloak
+  namespace: auth
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: keycloak
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces: ["gateway"]
+      to:
+        - operation:
+            methods: ["GET", "POST", "OPTIONS"]

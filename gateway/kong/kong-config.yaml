@@ -509,6 +509,34 @@ data:
                   policy: local
 
       # ---------------------------------------------------------
+      # F4 — Keycloak Authentication Server
+      # Centralized IAM for the entire platform
+      # ---------------------------------------------------------
+      - name: keycloak
+        url: http://keycloak.auth.svc.cluster.local:80
+        connect_timeout: 5000
+        read_timeout: 10000
+        write_timeout: 10000
+        routes:
+          - name: keycloak-api
+            paths:
+              - /auth
+            strip_path: true
+            plugins:
+              - name: cors
+                config:
+                  origins:
+                    - "*"
+                  methods:
+                    - GET
+                    - POST
+                    - OPTIONS
+                  headers:
+                    - Authorization
+                    - Content-Type
+                  max_age: 3600
+
+      # ---------------------------------------------------------
       # SECURITY: Block all /internal/* routes
       # Internal service-to-service calls use K8s DNS directly.
       # Any request reaching Kong for /internal/* is rejected.
