@@ -69,3 +69,16 @@ spec:
         syncOptions:
           - CreateNamespace=false
           - ServerSideApply=true
+          - RespectIgnoreDifferences=true
+      ignoreDifferences:
+        # External Secrets Operator mutates these fields after apply
+        - group: external-secrets.io
+          kind: ExternalSecret
+          jsonPointers:
+            - /status
+            - /metadata/annotations
+        # Kubernetes adds default fields to Deployments
+        - group: apps
+          kind: Deployment
+          jsonPointers:
+            - /spec/template/metadata/annotations
