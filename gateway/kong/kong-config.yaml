@@ -51,12 +51,6 @@ data:
               - POST
               - PUT
               - PATCH
-            plugins:
-              - name: jwt
-                config:
-                  claims_to_verify:
-                    - exp
-                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -82,12 +76,6 @@ data:
             strip_path: false
             methods:
               - GET
-            plugins:
-              - name: jwt
-                config:
-                  claims_to_verify:
-                    - exp
-                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -110,12 +98,6 @@ data:
             strip_path: false
             methods:
               - GET
-            plugins:
-              - name: jwt
-                config:
-                  claims_to_verify:
-                    - exp
-                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -159,12 +141,6 @@ data:
               - PUT
               - PATCH
               - DELETE
-            plugins:
-              - name: jwt
-                config:
-                  claims_to_verify:
-                    - exp
-                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -202,12 +178,6 @@ data:
             methods:
               - GET
               - POST
-            plugins:
-              - name: jwt
-                config:
-                  claims_to_verify:
-                    - exp
-                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -234,12 +204,6 @@ data:
               - POST
               - PUT
               - PATCH
-            plugins:
-              - name: jwt
-                config:
-                  claims_to_verify:
-                    - exp
-                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -268,12 +232,6 @@ data:
               - POST
               - PUT
               - PATCH
-            plugins:
-              - name: jwt
-                config:
-                  claims_to_verify:
-                    - exp
-                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -313,12 +271,6 @@ data:
               - PUT
               - PATCH
               - DELETE
-            plugins:
-              - name: jwt
-                config:
-                  claims_to_verify:
-                    - exp
-                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -356,12 +308,6 @@ data:
             methods:
               - GET
               - POST
-            plugins:
-              - name: jwt
-                config:
-                  claims_to_verify:
-                    - exp
-                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -397,11 +343,6 @@ data:
             strip_path: false
             methods:
               - GET
-            plugins:
-              - name: jwt
-                config:
-                  claims_to_verify:
-                    - exp
               - name: rate-limiting
                 config:
                   minute: 60
@@ -413,11 +354,6 @@ data:
             strip_path: false
             methods:
               - GET
-            plugins:
-              - name: jwt
-                config:
-                  claims_to_verify:
-                    - exp
               - name: rate-limiting
                 config:
                   minute: 30
@@ -440,12 +376,6 @@ data:
             methods:
               - GET
               - POST
-            plugins:
-              - name: jwt
-                config:
-                  claims_to_verify:
-                    - exp
-                  key_claim_name: kid
               - name: cors
                 config:
                   origins:
@@ -483,14 +413,6 @@ data:
             # for defence-in-depth. Clients must pass the Keycloak access token
             # as ?token=<jwt> in the Socket.IO connection URL because the browser
             # WebSocket API cannot set custom headers on the upgrade request.
-            plugins:
-              - name: jwt
-                config:
-                  key_claim_name: iss
-                  claims_to_verify:
-                    - exp
-                  uri_param_names:
-                    - token
               - name: cors
                 config:
                   origins:
