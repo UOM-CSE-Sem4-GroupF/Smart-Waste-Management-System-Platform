@@ -10,10 +10,11 @@
 #   2. Service: ClusterIP (not exposed publicly; accessed via Kong in production)
 #   3. Proxy: edge (Keycloak is behind Kong gateway)
 #   4. Hostname: 139.59.219.173 (The public IP of the Kong LoadBalancer)
-#   5. Relative Path: /auth (Keycloak serves at /auth to match gateway routing)
+#   5. Relative Path: /auth/ (Trailing slash prevents broken readiness probe construction)
 
+production: true
 proxy: edge
-httpRelativePath: /auth
+httpRelativePath: /auth/
 hostname: 139.59.219.173
 
 service:
