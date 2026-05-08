@@ -27,28 +27,26 @@ base-service:
   resources:
     requests:
       cpu: 500m
-      memory: 512Mi
+      memory: 2Gi
     limits:
       cpu: 2000m
-      memory: 2Gi
+      memory: 4Gi
 
-  # Run all 5 pipelines in one pod — each in the background.
-  # If any pipeline exits the container exits, Kubernetes restarts the pod.
+  # Run pipeline 1 only (telemetry → processed) until memory baseline is confirmed.
+  # Each PyFlink job spawns a full JVM via Py4J — 5 concurrent jobs need ~5Gi.
+  # Add other pipelines back once job.py is verified stable.
   command: ["/bin/bash", "-c"]
   args:
     - |
-      mkdir -p /opt/flink/log
-      python job.py --mode pyflink-kafka &
-      python job_zone.py --mode pyflink-kafka &
-      python job_deviation.py --mode pyflink-kafka &
-      python job_vehicle.py --mode pyflink-kafka &
-      python job_sensor_offline.py --mode pyflink-kafka &
-      wait -n
+      mkdir -p /tmp/flink/log
+      export FLINK_LOG_DIR=/tmp/flink/log
+      export JAVA_TOOL_OPTIONS="-Dlog.file=/tmp/flink/log/flink.log"
+      python job.py --mode pyflink-kafka
 
   env:
     APP_ENV: "production"
     HOME: "/tmp"
-    FLINK_LOG_DIR: "/tmp"
+    FLINK_LOG_DIR: "/tmp/flink/log"
     PYTHONUNBUFFERED: "1"
     # Kafka
     KAFKA_BOOTSTRAP_SERVERS: "kafka.messaging.svc.cluster.local:9092"
