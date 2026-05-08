@@ -4,7 +4,6 @@
 # Key changes vs dev:
 #   1. Service: ClusterIP — Keycloak is internal-only, accessed via Kong at /auth
 #   2. KC_HOSTNAME_URL — public URL clients see for issuer + redirect URIs
-#   3. PostgreSQL storage: uses DOKS do-block-storage
 
 # Keycloak is internal-only on DOKS — all traffic goes through Kong at /auth
 service:
@@ -12,16 +11,15 @@ service:
   ports:
     http: 80
 
-# Tell Keycloak its public-facing base URL (Kong's external IP).
+# Tell Keycloak its public-facing base URL (Kong's external IP + /auth path).
 # Controls the issuer claim in JWTs and redirect URIs sent to browser clients.
-# KC_PROXY=edge is already set in values-dev.yaml but repeated here for clarity.
+# Without this Keycloak generates http://keycloak.auth.svc.cluster.local/...
+# which browsers cannot reach.
 extraEnvVars:
   - name: KC_HOSTNAME_URL
     value: "http://139.59.219.173/auth"
   - name: KC_HOSTNAME_STRICT
     value: "false"
-  - name: KC_PROXY
-    value: edge
 
 postgresql:
   primary:
