@@ -62,11 +62,13 @@ production: false
 # ─── Networking ──────────────────────────────────────────────
 # Expose via NodePort so Minikube can reach it
 service:
-  type: NodePort
+  type: LoadBalancer
   ports:
     http: 80
   nodePorts:
     http: "30180"
+  annotations:
+    service.beta.kubernetes.io/do-loadbalancer-name: "swms-keycloak"
 
 # ─── Resource Limits ─────────────────────────────────────────
 # Keycloak is JVM-based — needs a bit more RAM

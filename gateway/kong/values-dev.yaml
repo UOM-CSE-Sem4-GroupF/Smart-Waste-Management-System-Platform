@@ -32,12 +32,15 @@ replicaCount: 1
 
 # Expose Kong proxy via NodePort so Minikube can reach it
 proxy:
-  type: NodePort
+  type: LoadBalancer
   http:
     enabled: true
     nodePort: 30080
   tls:
     enabled: false
+  annotations:
+    service.beta.kubernetes.io/do-loadbalancer-name: "swms-kong-proxy"
+    service.beta.kubernetes.io/do-loadbalancer-protocol: "http"
 
 # Kong Admin API — cluster-internal only (no external exposure)
 admin:
