@@ -81,6 +81,14 @@ spec:
           {{- end }}
 
           # ── Environment injection ──────────────────────────────────────────
+          {{- if .Values.env }}
+          env:
+            {{- range $key, $value := .Values.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          {{- end }}
+
           envFrom:
             # Non-secret config from ConfigMap
             - configMapRef:
