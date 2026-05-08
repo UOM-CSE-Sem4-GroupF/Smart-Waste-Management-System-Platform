@@ -51,6 +51,7 @@ data:
               - POST
               - PUT
               - PATCH
+            plugins:
               - name: cors
                 config:
                   origins:
@@ -343,6 +344,7 @@ data:
             strip_path: false
             methods:
               - GET
+            plugins:
               - name: rate-limiting
                 config:
                   minute: 60
