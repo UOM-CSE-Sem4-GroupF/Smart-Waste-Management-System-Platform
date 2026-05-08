@@ -63,7 +63,7 @@ production: false
 # ─── Reverse Proxy Path ──────────────────────────────────────
 # Keycloak serves at /auth/... so Kong's strip_path: false route
 # forwards /auth/realms/... correctly without path rewriting.
-httpRelativePath: "/auth"
+httpRelativePath: "/auth/"
 
 # ─── Networking ──────────────────────────────────────────────
 # NodePort for local Minikube; values-doks.yaml overrides this to ClusterIP on DOKS.
