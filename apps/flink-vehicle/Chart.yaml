@@ -1,0 +1,9 @@
+apiVersion: v2
+name: flink-vehicle
+description: Flink Pipeline 4 - Vehicle Position Historian
+type: application
+version: 1.0.0
+dependencies:
+  - name: base-service
+    version: 1.0.0
+    repository: "file://../../helm/charts/base-service"

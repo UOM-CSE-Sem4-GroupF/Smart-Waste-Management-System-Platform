@@ -1,0 +1,84 @@
+base-service:
+  imagePullSecrets:
+    - name: ghcr-pull-secret
+  image:
+    repository: ghcr.io/uom-cse-sem4-groupf/flink-processor
+    tag: latest
+  service:
+    port: 8080
+  livenessProbe:
+    enabled: false
+  readinessProbe:
+    enabled: false
+
+  podSecurityContext:
+    runAsNonRoot: false
+    runAsUser: 0
+    fsGroup: 0
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    runAsNonRoot: false
+    runAsUser: 0
+    capabilities:
+      drop:
+        - ALL
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+
+  # Pipeline 4 (Vehicle Position Historian)
+  command: ["/bin/bash", "-c"]
+  args:
+    - |
+      mkdir -p /tmp/flink/log
+      export FLINK_LOG_DIR=/tmp/flink/log
+      export JAVA_TOOL_OPTIONS="-Dlog.file=/tmp/flink/log/flink.log"
+      python job_vehicle.py --mode pyflink-kafka
+
+  env:
+    APP_ENV: "production"
+    LOG_LEVEL: "INFO"
+    HOME: "/tmp"
+    FLINK_LOG_DIR: "/tmp/flink/log"
+    PYTHONUNBUFFERED: "1"
+    # Kafka
+    KAFKA_BOOTSTRAP_SERVERS: "kafka.messaging.svc.cluster.local:9092"
+    KAFKA_SECURITY_PROTOCOL: "SASL_PLAINTEXT"
+    KAFKA_SASL_MECHANISM: "SCRAM-SHA-256"
+    # Vehicle pipeline (job_vehicle.py)
+    KAFKA_VEHICLE_LOCATION_TOPIC: "waste.vehicle.location"
+    # PostgreSQL
+    POSTGRES_HOST: "postgres-waste-postgresql.waste-dev.svc.cluster.local"
+    POSTGRES_PORT: "5432"
+    POSTGRES_DB: "waste_management"
+    POSTGRES_USER: "waste_admin"
+    POSTGRES_SCHEMA: "f2"
+    # InfluxDB
+    INFLUX_URL: "http://influxdb.waste-dev.svc.cluster.local:8086"
+    INFLUX_ORG: "waste-org"
+    INFLUX_ENABLED: "true"
+    INFLUX_RAW_BUCKET: "bin_readings_raw"
+    INFLUX_PROCESSED_BUCKET: "bin_readings_processed"
+    INFLUX_ZONE_BUCKET: "zone_statistics"
+    INFLUX_VEHICLE_BUCKET: "vehicle_positions"
+
+  externalSecret:
+    enabled: true
+    vaultPath: swms/kafka
+    secretStoreName: vault-backend
+    secretStoreKind: ClusterSecretStore
+    data:
+      - secretKey: KAFKA_USERNAME
+        remoteRef: { key: swms/kafka, property: sasl_username }
+      - secretKey: KAFKA_PASSWORD
+        remoteRef: { key: swms/kafka, property: sasl_password }
+      - secretKey: POSTGRES_PASSWORD
+        remoteRef: { key: swms/postgres-waste, property: password }
+      - secretKey: INFLUX_TOKEN
+        remoteRef: { key: swms/influxdb, property: token }
