@@ -200,7 +200,7 @@ jobs:
       # ── Image metadata ────────────────────────────────────────────────────
       - name: Extract image metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/uom-cse-sem4-groupf/${{ inputs.service-name }}
           tags: |
