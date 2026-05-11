@@ -73,7 +73,7 @@ base-service:
     POSTGRES_USER: "waste_admin"
     POSTGRES_SCHEMA: "f2"
     # InfluxDB
-    INFLUX_URL: "http://influxdb.waste-dev.svc.cluster.local:8086"
+    INFLUX_URL: "http://influxdb-influxdb2.waste-dev.svc.cluster.local:80"
     INFLUX_ORG: "waste-org"
     INFLUX_ENABLED: "true"
     INFLUX_RAW_BUCKET: "bin_readings_raw"
