@@ -49,7 +49,7 @@
       "publicClient": false,
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
-      "directAccessGrantsEnabled": false,
+      "directAccessGrantsEnabled": true,
       "clientAuthenticatorType": "client-secret",
       "secret": "dashboard-client-secret-dev",
       "redirectUris": [
