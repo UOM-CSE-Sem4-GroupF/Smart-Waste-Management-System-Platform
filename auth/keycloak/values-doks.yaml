@@ -16,7 +16,7 @@ service:
 # Without this Keycloak generates http://keycloak.auth.svc.cluster.local/...
 # which browsers cannot reach.
 extraEnvVars:
-  - name: KC_HOSTNAME_URL
+  - name: KC_HOSTNAME
     value: "http://139.59.219.173/auth/"
   - name: KC_HOSTNAME_STRICT
     value: "false"
