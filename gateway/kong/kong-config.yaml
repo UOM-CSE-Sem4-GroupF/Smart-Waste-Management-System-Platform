@@ -258,6 +258,46 @@ data:
                   minute: 60
                   policy: local
 
+          - name: sysadmin-api
+            paths:
+              - /api/v1/collection-jobs
+              - /api/v1/routine-schedules
+              - /api/v1/emergency-job-details
+              - /api/v1/routine-job-details
+              - /api/v1/job-execution-metrics
+              - /api/v1/bin-collection-records
+              - /api/v1/job-state-transitions
+              - /api/v1/job-step-results
+              - /api/v1/driver-assignment-history
+              - /api/v1/vehicle-weight-logs
+            strip_path: false
+            methods:
+              - GET
+              - POST
+              - PUT
+              - PATCH
+              - DELETE
+            plugins:
+              - name: cors
+                config:
+                  origins:
+                    - "*"
+                  methods:
+                    - GET
+                    - POST
+                    - PUT
+                    - PATCH
+                    - DELETE
+                    - OPTIONS
+                  headers:
+                    - Authorization
+                    - Content-Type
+                  max_age: 3600
+              - name: rate-limiting
+                config:
+                  minute: 60
+                  policy: local
+
       # ---------------------------------------------------------
       # F2 — Core API Service
       # Zone management, bin clusters, route plans, analytics
