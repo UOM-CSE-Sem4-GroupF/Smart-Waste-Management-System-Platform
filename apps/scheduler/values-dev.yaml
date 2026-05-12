@@ -18,6 +18,9 @@ base-service:
       port: 3003
       path: /ready
 
+  command: ["/bin/sh", "-c"]
+  args: ["export DATABASE_URL=postgresql://waste_admin:${POSTGRES_PASSWORD}@postgres-waste-postgresql.waste-dev.svc.cluster.local:5432/waste_management?schema=f3 && node dist/index.js"]
+
   env:
     PORT: "3003"
     KAFKA_BROKER: "kafka.messaging.svc.cluster.local:9092"
@@ -32,3 +35,5 @@ base-service:
         remoteRef: { key: swms/kafka, property: sasl_username }
       - secretKey: KAFKA_PASS
         remoteRef: { key: swms/kafka, property: sasl_password }
+      - secretKey: POSTGRES_PASSWORD
+        remoteRef: { key: swms/postgres-waste, property: password }
