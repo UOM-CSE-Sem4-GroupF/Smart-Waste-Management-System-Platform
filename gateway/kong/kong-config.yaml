@@ -299,6 +299,13 @@ data:
                   minute: 60
                   policy: local
 
+          - name: data-analysis-health
+            paths:
+              - /health/data-analysis
+            strip_path: true
+            methods:
+              - GET
+
       # ---------------------------------------------------------
       # F2 — FastAPI ML Service
       # Fill-time predictions, zone generation, route scoring
