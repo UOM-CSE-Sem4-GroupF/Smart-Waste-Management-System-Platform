@@ -144,6 +144,7 @@ data:
               - PUT
               - PATCH
               - DELETE
+              - OPTIONS
             plugins:
               - name: cors
                 config:
