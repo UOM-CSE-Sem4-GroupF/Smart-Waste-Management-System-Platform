@@ -305,6 +305,11 @@ data:
             strip_path: true
             methods:
               - GET
+            plugins:
+              - name: request-transformer
+                config:
+                  replace:
+                    uri: /health
 
       # ---------------------------------------------------------
       # F2 — FastAPI ML Service
