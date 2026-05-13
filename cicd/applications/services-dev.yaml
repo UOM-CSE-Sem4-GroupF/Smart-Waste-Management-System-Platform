@@ -32,6 +32,8 @@ spec:
         directories:
           - path: apps/*
           - path: '!apps/flink-*'
+          - path: '!apps/airflow'
+          - path: '!apps/spark'
   template:
     metadata:
       name: "{{ .path.basename }}"
